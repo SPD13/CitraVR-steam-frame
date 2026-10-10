@@ -10,6 +10,7 @@
 
 <p align="center">
   <a href="#steam-frame-edition">Steam Frame Edition</a> |
+  <a href="#installing-on-steam-frame">Installing on Steam Frame</a> |
   <a href="#compatabillty">Compatibillty</a> |
   <a href="#releases">Releases</a> |
   <a href="#known-issues">Known Issues</a> |
@@ -35,7 +36,7 @@
 
 Passthrough and the immersive modes haven't been checked on the headset yet. The same APK still targets Quest.
 
-**Quick start (Steam Frame):** build the APK (`cd src/android && ./gradlew assembleRelease`), then run `./register-frame.sh` from the repository root. It installs the app into the headset's Steam library with its artwork. Details are in [STEAM_FRAME.md](STEAM_FRAME.md).
+**Quick start (Steam Frame):** build the APK (`cd src/android && ./gradlew assembleRelease`), then run `./register-frame.sh` from the repository root. It installs the app into the headset's Steam library with its artwork. The full process is in [Installing on Steam Frame](#installing-on-steam-frame).
 
 ### What this fork adds
 
@@ -70,6 +71,112 @@ Passthrough and the immersive modes haven't been checked on the headset yet. The
 - The curved screen and immersive modes fall back to the flat screen (no cylinder layers in SteamVR).
 - There's no CPU/GPU clock control and no performance overlay.
 - The library title keeps its own Android data, separate from Lepton Development.
+
+## Installing on Steam Frame
+
+You build the app on a computer, then a script copies it to the headset over Wi-Fi and adds it to the Steam library. After that the computer is no longer needed: the app, your ROMs and your saves live on the headset.
+
+### 1. What you need
+
+**The headset**
+- A Valve **Steam Frame**, on the same network as your computer.
+- **Developer Mode** turned on, with a user password ([step 3](#3-prepare-the-headset)).
+
+**The computer: macOS, Linux, or Windows with Git Bash or WSL**
+
+| Tool | Why |
+| --- | --- |
+| Git | Fetch the source and its submodules |
+| JDK 17 | Android build (Temurin, Homebrew `openjdk@17`, or Android Studio's) |
+| Android SDK: platform 35, build-tools, CMake 3.25+, NDK `27.3.13750724` | Native and Android build (install with Android Studio's SDK Manager or `sdkmanager`) |
+| ssh / scp | Copy the app to the headset (built into macOS, Linux and Windows 10/11) |
+| About 10 GB of free disk space | Submodules, NDK and build output |
+
+### 2. Build the APK
+
+```sh
+git clone --recurse-submodules -b steam-frame https://github.com/SPD13/CitraVR-steam-frame.git
+cd CitraVR-steam-frame/src/android
+export ANDROID_HOME=/path/to/android/sdk      # or put sdk.dir=... in local.properties
+./gradlew assembleRelease
+```
+
+The first build compiles the whole emulator and takes around 10 minutes; later builds are much faster. The APK is written to `src/android/app/build/outputs/apk/release/app-release.apk`. The same APK runs on Quest.
+
+You can also download the APK built by GitHub Actions: open the repository's **Actions** tab, pick the latest run, and download the **CitraVR-…** artifact.
+
+### 3. Prepare the headset
+
+1. **Turn on Developer Mode:** in the headset, open **Steam Settings → System**, turn on **Developer Mode**, and set a **user password** when asked. This enables ssh access as the user `steamos`.
+2. **Check that the computer can see the headset.** The Frame announces itself as `frame.local`:
+   ```sh
+   ping frame.local
+   ```
+   If the name doesn't resolve, find the Frame's IP address in its Wi-Fi settings, and put `FRAME_HOST=<ip>` in front of the commands below.
+3. **Copy your ssh key once,** so the installer doesn't ask for the password at every step:
+   ```sh
+   ssh-keygen -t ed25519            # only if you have no key yet
+   ssh-copy-id steamos@frame.local  # enter the Developer Mode password
+   ssh steamos@frame.local true     # should now return without asking anything
+   ```
+
+Keep the headset awake while installing: when it sleeps it drops off the network.
+
+### 4. Install into the Steam library
+
+From the repository root:
+
+```sh
+./register-frame.sh                          # installs the APK built in step 2
+./register-frame.sh path/to/CitraVR.apk      # or another APK
+FRAME_HOST=192.168.1.42 ./register-frame.sh  # if frame.local doesn't resolve
+```
+
+It prints one line per step:
+
+```text
+registered as Devkit Game: citravr (Android runtime, Lepton)
+Devkit Game: citravr: artwork installed for appid … in …/config/grid
+steam-library: app id … is now 'Citra VR - Steam Frame Edition', 4 artwork images set
+```
+
+1. **Register:** the APK goes to `~/devkit-game/citravr/` on the headset and is registered with Steam as a title on the **Lepton** (Android) runtime, the same request Valve's devkit Title Upload sends.
+2. **Artwork:** the library artwork is installed.
+3. **Name:** the entry is renamed **Citra VR - Steam Frame Edition**.
+
+### 5. First launch
+
+1. In the headset, open **Library → Non-Steam → Citra VR - Steam Frame Edition** and press **Play**. The first start takes a little longer while Lepton prepares the app. If Steam warns that Valve is still learning about the title's compatibility, continue.
+2. CitraVR's 2D window opens. Go through the setup:
+   - **Permissions:** allow the file access CitraVR asks for. Microphone and camera are optional.
+   - **User folder:** in the picker, use **Create new folder** to make one (for example `CitraVR`), then **Use this folder** and **Allow**.
+   - **Games folder:** same steps, for example a `games` folder inside it.
+3. **Add your games.** In CitraVR, open **Options (gear) → Settings → VR**, and turn on **Enable ROM upload server**. **Server address** shows a URL such as `http://192.168.1.42:8338`. Open it in a browser on your computer, and drag your ROMs (`.3ds`, `.cci`, `.cxi`, `.3dsx`, …) onto the page. They appear in CitraVR's game list as soon as each upload finishes. Turn the server off when you're done: anyone on the network can use it while it's on.
+4. **Play:** pick a game in the list. It opens in VR.
+
+**In a game:** press the left controller's **View** button to show the menu bar below the screens. **Close Game** opens the **Choose a game** panel, where you can start another game, go back to the current one, or return to the 2D window. Controls are listed in [STEAM_FRAME.md](STEAM_FRAME.md#controls).
+
+### Updating and uninstalling
+
+- **Update:** after building a new APK, run `./register-frame.sh` again. It replaces the app and keeps its library entry. Lepton has been reported to reset an app's data when its APK changes, so back up your saves (in the user folder you picked) before updating.
+- **Uninstall:** `./register-frame.sh --uninstall` removes the library entry, its artwork and the files in `~/devkit-game/citravr/`.
+
+### Alternative: install with adb
+
+For development, you can sideload the APK into **Lepton Development** instead: start **Lepton Development** from the Steam library, then run `adb connect frame.local:5555` and `adb install -r app-release.apk`. Apps installed this way run inside the Lepton Development window and have separate data from the library entry. See [STEAM_FRAME.md](STEAM_FRAME.md#with-adb-for-development).
+
+### Troubleshooting
+
+| Problem | Fix |
+| --- | --- |
+| `ssh: Could not resolve hostname frame.local` | The headset is asleep or on another network. Wake it, or use `FRAME_HOST=<ip>`. |
+| `Permission denied (publickey,password)` | Developer Mode or its password isn't set, or the key wasn't copied. Redo [step 3](#3-prepare-the-headset). |
+| `Steam is not running on the Frame` | Put the headset on so Steam is running, then run the installer again. |
+| `Steam did not answer` / `Steam refused` | Developer Mode is off. Turn it on and run the installer again. |
+| The entry is called **Devkit Game: citravr** | The renaming step couldn't reach Steam. Run `./register-frame.sh` again. |
+| No artwork in the library | Run `./register-frame.sh` again, or restart the headset. |
+| The ROM upload page doesn't load | Check the server is on and the address matches the one in Settings → VR. The computer must be on the same network. |
+| After Play, only the Steam interface shows | The SteamVR dashboard is in front: choose **Resume**, or close the dashboard. |
 
 ## Introduction
 I originally created this project to a be a proof-of-concept of some techniques XR developers were curious about. 
