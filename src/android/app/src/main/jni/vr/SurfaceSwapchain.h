@@ -100,6 +100,13 @@ public:
     int AddRegion(const int32_t x, const int32_t y, const int32_t width, const int32_t height,
                   const uint32_t outputWidth, const uint32_t outputHeight);
 
+    /** Changes how much of a region's swapchain the region is copied into
+     *  (from the bottom left; at most the swapchain's size). Lets the
+     *  resolution a panel is shown at change without a new swapchain. The next
+     *  Update() copies the current frame again at the new size.
+     */
+    void SetRegionOutputSize(const int region, const uint32_t width, const uint32_t height);
+
     const Swapchain& GetRegionSwapchain(const int region) const {
         return mRegions[region].mSwapchain;
     }
@@ -119,6 +126,10 @@ private:
         // The part of the surface copied, in Android surface coordinates.
         XrRect2Di mSourceRect{};
         std::chrono::steady_clock::time_point mLastDumpTime{};
+        int mBurstFramesDumped = 0;
+        // The part of the swapchain the copy fills, from the bottom left.
+        uint32_t mOutputWidth = 0;
+        uint32_t mOutputHeight = 0;
     };
 
     void CreateAndroidSurfaceSwapchain(const XrSession& session);
@@ -153,6 +164,8 @@ private:
     // Frames latched with updateTexImage(), compared against the listener's count.
     jlong mLatchedFrameCount = 0;
     bool mHasCopiedFrame = false;
+    // Copy the latched frame again on the next Update(), even without a new one.
+    bool mShouldRecopy = false;
 
     // Whether the swapchains store sRGB-encoded values, in which case the copy
     // decodes the (sRGB-encoded) Android content to linear and the GPU encodes it

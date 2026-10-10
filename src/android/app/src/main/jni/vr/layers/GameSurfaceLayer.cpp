@@ -52,6 +52,22 @@ float GetDensitySysprop(const uint32_t resolutionFactor) {
     return lastDensity;
 }
 
+// Resolution of the lower panel, in multiples of the 3DS's (320x240). Changeable
+// at runtime with `setprop debug.citra.lower_panel_resolution <factor>` (up to
+// GameSurfaceLayer's kMaxLowerPanelResolution), to compare how the headset
+// shows it.
+float GetLowerPanelResolutionSysprop() {
+    static constexpr float kDefaultLowerPanelResolution = 2.0f;
+    static float lastResolution = kDefaultLowerPanelResolution;
+    static std::chrono::time_point<std::chrono::steady_clock> lastTime = {};
+    if ((std::chrono::steady_clock::now() - lastTime) >= kMinTimeBetweenChecks) {
+        lastTime = std::chrono::steady_clock::now();
+        lastResolution = SyspropUtils::GetSysPropAsFloat("debug.citra.lower_panel_resolution",
+                                                         kDefaultLowerPanelResolution);
+    }
+    return lastResolution;
+}
+
 int32_t GetCylinderSysprop() {
     static constexpr int32_t                                  kDefaultCylinder = 0;
     static int32_t                                            lastCylinder     = kDefaultCylinder;
@@ -283,6 +299,12 @@ void GameSurfaceLayer::FrameTopPanel(const XrSpace& space, std::vector<XrComposi
     // Prevent a seam between the top and bottom view
     constexpr uint32_t verticalBorderTex   = 1;
     constexpr uint32_t horizontalBorderTex = 1;
+    if (mLowerRegion >= 0) {
+        const float resolution = GetLowerPanelResolutionSysprop();
+        mSurfaceSwapchain->SetRegionOutputSize(
+            mLowerRegion, static_cast<uint32_t>(Core::kScreenBottomWidth * resolution),
+            static_cast<uint32_t>(Core::kScreenBottomHeight * resolution));
+    }
     // Latch the newest frame from Citra, if the swapchain needs it copied.
     mSurfaceSwapchain->Update();
     // Without cylinder layers (e.g. SteamVR), immersive modes fall back to the flat panel.
@@ -386,7 +408,15 @@ void GameSurfaceLayer::FrameLowerPanel(const XrSpace&                   space,
     const int32_t width = mLowerPanel.mWidth / immersiveModeFactor;
     const int32_t height = mLowerPanel.mHeight / immersiveModeFactor - verticalBorderTex;
     layer.subImage = GetSubImage(mLowerRegion, x, y, width, height);
-    layer.pose                             = mLowerPanel.mWorldFromPanel;
+    // The menu ribbon is drawn in the same plane, behind this panel, with a dark
+    // translucent background over its whole area. Runtimes that composite layers
+    // in order (Quest) show this panel on top; SteamVR on Steam Frame depth-tests
+    // them, and the coplanar panels z-fought: the ribbon's background showed
+    // through as a moving pattern of black pixels. Keep this panel just in front.
+    constexpr float kLowerPanelOffsetFromRibbonInMeters = 0.01f;
+    layer.pose = mLowerPanel.mWorldFromPanel;
+    layer.pose.position = XrMath::Posef::Transform(
+        mLowerPanel.mWorldFromPanel, XrVector3f{0.0f, 0.0f, kLowerPanelOffsetFromRibbonInMeters});
     const auto scale = GetDensityScaleFor3dsScreen(Core::kScreenBottomWidth,
                                                    Core::kScreenBottomHeight,
                                                    mLowerPanel.mScaleFactor, mResolutionFactor);
@@ -506,21 +536,22 @@ void GameSurfaceLayer::CreateSwapchain(const jobject activityObject) {
     // Where the surface is copied into swapchains (Steam Frame), each panel gets a
     // swapchain of its own instead of one for the whole surface:
     //  - Steam Frame injects Valve's foveated-rendering layer into every app. It
-    //    takes any swapchain taller than 1000 px for an eye buffer and lowers the
-    //    detail away from the gaze in everything rendered at that height. The
-    //    whole surface (1440 px tall at 3x) matches Citra's own output, whose
-    //    lower screen then shimmered as the head moved. Each swapchain therefore
-    //    stays at most kMaxSwapchainHeight tall.
-    //  - The lower panel is shown much smaller than its texels (about 560 px
-    //    across for 960 texels at 3x), so it gets a filtered downscale to twice
-    //    the 3DS resolution, which the compositor barely needs to shrink.
+    //    takes any swapchain taller than 1000 px for an eye buffer and applies a
+    //    gaze-dependent fragment density map to every Vulkan render pass of that
+    //    height. The whole surface (1440 px tall at 3x) would register, and
+    //    matches the height of Citra's own output, so each swapchain stays at
+    //    most kMaxSwapchainHeight tall to keep the layer out of our rendering.
+    //  - The lower panel is shown much smaller than its texels (about 520 px
+    //    across for 960 texels at 3x), so it gets a filtered downscale (see
+    //    GetLowerPanelResolutionSysprop()) the compositor barely needs to shrink.
     const bool usesRegions = SurfaceSwapchain::UsesCopies();
     mSurfaceSwapchain = std::make_unique<SurfaceSwapchain>(mSession, mEnv, activityObject, width,
                                                            height, !usesRegions);
     mSurface = mSurfaceSwapchain->GetSurface();
     if (usesRegions) {
         constexpr uint32_t kMaxSwapchainHeight = 1000;
-        constexpr uint32_t kLowerPanelOversampling = 2;
+        // Room for the lower panel at up to this multiple of the 3DS resolution.
+        constexpr uint32_t kMaxLowerPanelResolution = 3;
         const uint32_t panelHeight = height / 2;
         // Top panels (both eyes), scaled down only if they would be too tall.
         const float topScale =
@@ -531,9 +562,9 @@ void GameSurfaceLayer::CreateSwapchain(const jobject activityObject) {
         // Lower panel, skipping the row bordering the top panels.
         const uint32_t lowerWidth = Core::kScreenBottomWidth * mResolutionFactor;
         const uint32_t lowerOutputWidth =
-            std::min(lowerWidth, Core::kScreenBottomWidth * kLowerPanelOversampling);
+            std::min(lowerWidth, Core::kScreenBottomWidth * kMaxLowerPanelResolution);
         const uint32_t lowerOutputHeight =
-            std::min(panelHeight - 1, Core::kScreenBottomHeight * kLowerPanelOversampling);
+            std::min(panelHeight - 1, Core::kScreenBottomHeight * kMaxLowerPanelResolution);
         mLowerRegion =
             mSurfaceSwapchain->AddRegion(0, panelHeight + 1, lowerWidth, panelHeight - 1,
                                          lowerOutputWidth, lowerOutputHeight);

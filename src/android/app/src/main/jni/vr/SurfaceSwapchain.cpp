@@ -324,6 +324,8 @@ void SurfaceSwapchain::CreateCopyTarget(const XrSession& session, const uint32_t
                                         CopyTarget& target) {
     target.mSwapchain.mWidth = width;
     target.mSwapchain.mHeight = height;
+    target.mOutputWidth = width;
+    target.mOutputHeight = height;
     target.mSourceRect = sourceRect;
 
     XrSwapchainCreateInfo xsci;
@@ -396,6 +398,20 @@ int SurfaceSwapchain::AddRegion(const int32_t x, const int32_t y, const int32_t 
     return static_cast<int>(mRegions.size()) - 1;
 }
 
+void SurfaceSwapchain::SetRegionOutputSize(const int region, const uint32_t width,
+                                           const uint32_t height) {
+    CopyTarget& target = mRegions[region];
+    const uint32_t outputWidth = std::clamp(width, 1u, target.mSwapchain.mWidth);
+    const uint32_t outputHeight = std::clamp(height, 1u, target.mSwapchain.mHeight);
+    if (outputWidth == target.mOutputWidth && outputHeight == target.mOutputHeight) {
+        return;
+    }
+    target.mOutputWidth = outputWidth;
+    target.mOutputHeight = outputHeight;
+    mShouldRecopy = true;
+    ALOGI("SurfaceSwapchain: region {} now copied at {}x{}", region, outputWidth, outputHeight);
+}
+
 void SurfaceSwapchain::ClearSwapchainImage(CopyTarget& target) {
     uint32_t index = 0;
     XrSwapchainImageAcquireInfo acquireInfo = {XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO, nullptr};
@@ -425,9 +441,10 @@ void SurfaceSwapchain::Update() {
     // latches one), then copy the newest. Frames are counted by a listener because
     // buffer timestamps are not set by every producer.
     const jlong frameCount = mEnv->CallLongMethod(mFrameListener, mGetFrameCountMethodID);
-    if (frameCount == mLatchedFrameCount) {
+    if (frameCount == mLatchedFrameCount && !(mShouldRecopy && mHasCopiedFrame)) {
         return;
     }
+    mShouldRecopy = false;
     while (mLatchedFrameCount < frameCount) {
         mEnv->CallVoidMethod(mSurfaceTexture, mUpdateTexImageMethodID);
         if (mEnv->ExceptionCheck()) {
@@ -465,7 +482,7 @@ void SurfaceSwapchain::CopySurfaceTexture(CopyTarget& target, const float transf
     OXR(xrWaitSwapchainImage(target.mSwapchain.mHandle, &waitInfo));
 
     glBindFramebuffer(GL_FRAMEBUFFER, target.mFramebuffers[index]);
-    glViewport(0, 0, target.mSwapchain.mWidth, target.mSwapchain.mHeight);
+    glViewport(0, 0, target.mOutputWidth, target.mOutputHeight);
     glDisable(GL_BLEND);
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_SCISSOR_TEST);
@@ -484,8 +501,8 @@ void SurfaceSwapchain::CopySurfaceTexture(CopyTarget& target, const float transf
     const float sourceHeight = static_cast<float>(source.extent.height) / surfaceHeight;
     // Downscales spread their taps over each target pixel's footprint.
     const bool isDownscale =
-        source.extent.width > static_cast<int32_t>(target.mSwapchain.mWidth) ||
-        source.extent.height > static_cast<int32_t>(target.mSwapchain.mHeight);
+        source.extent.width > static_cast<int32_t>(target.mOutputWidth) ||
+        source.extent.height > static_cast<int32_t>(target.mOutputHeight);
     const int tapsPerAxis = isDownscale ? kDownscaleTapsPerAxis : 1;
 
     glUseProgram(mProgram);
@@ -494,8 +511,8 @@ void SurfaceSwapchain::CopySurfaceTexture(CopyTarget& target, const float transf
     glUniform2f(mSourceOffsetUniform, sourceX, sourceY);
     glUniform2f(mSourceScaleUniform, sourceWidth, sourceHeight);
     glUniform1i(mTapsPerAxisUniform, tapsPerAxis);
-    glUniform2f(mTapStepUniform, sourceWidth / (target.mSwapchain.mWidth * tapsPerAxis),
-                sourceHeight / (target.mSwapchain.mHeight * tapsPerAxis));
+    glUniform2f(mTapStepUniform, sourceWidth / (target.mOutputWidth * tapsPerAxis),
+                sourceHeight / (target.mOutputHeight * tapsPerAxis));
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_EXTERNAL_OES, mExternalTexture);
     glBindVertexArray(mVertexArray);
@@ -513,22 +530,41 @@ void SurfaceSwapchain::CopySurfaceTexture(CopyTarget& target, const float transf
 // Debugging aid: with `setprop debug.citra.dump_swapchains 1`, writes what was just
 // copied into each swapchain (raw RGBA rows as glReadPixels returns them, bottom
 // row first) to the app's files directory, at most once per second per swapchain.
+// With 2, writes the next kBurstFrames copies of each swapchain to numbered files
+// instead (set it back to 0 to allow another burst). `debug.citra.dump_width`
+// limits dumps to the swapchains of that width.
 void SurfaceSwapchain::DumpBoundFramebufferIfRequested(CopyTarget& target,
                                                        const float transformMatrix[16]) {
-    if (SyspropUtils::GetSysPropAsInt("debug.citra.dump_swapchains", 0) == 0) {
+    constexpr int kBurstFrames = 30;
+    const int mode = SyspropUtils::GetSysPropAsInt("debug.citra.dump_swapchains", 0);
+    if (mode == 0) {
+        target.mBurstFramesDumped = 0;
         return;
     }
-    const auto now = std::chrono::steady_clock::now();
-    if (now - target.mLastDumpTime < std::chrono::seconds(1)) {
-        return;
-    }
-    target.mLastDumpTime = now;
     const Swapchain& swapchain = target.mSwapchain;
+    const int onlyWidth = SyspropUtils::GetSysPropAsInt("debug.citra.dump_width", 0);
+    if (onlyWidth != 0 && onlyWidth != static_cast<int>(swapchain.mWidth)) {
+        return;
+    }
+    std::string path;
+    if (mode == 2) {
+        if (target.mBurstFramesDumped >= kBurstFrames) {
+            return;
+        }
+        path = fmt::format("/data/data/org.citra.citra_emu/files/swapchain_{}x{}_{:02}.rgba",
+                           swapchain.mWidth, swapchain.mHeight, target.mBurstFramesDumped++);
+    } else {
+        const auto now = std::chrono::steady_clock::now();
+        if (now - target.mLastDumpTime < std::chrono::seconds(1)) {
+            return;
+        }
+        target.mLastDumpTime = now;
+        path = fmt::format("/data/data/org.citra.citra_emu/files/swapchain_{}x{}.rgba",
+                           swapchain.mWidth, swapchain.mHeight);
+    }
     std::vector<uint8_t> pixels(static_cast<size_t>(swapchain.mWidth) * swapchain.mHeight * 4);
     glReadPixels(0, 0, swapchain.mWidth, swapchain.mHeight, GL_RGBA, GL_UNSIGNED_BYTE,
                  pixels.data());
-    const std::string path = fmt::format("/data/data/org.citra.citra_emu/files/swapchain_{}x{}.rgba",
-                                         swapchain.mWidth, swapchain.mHeight);
     if (FILE* file = fopen(path.c_str(), "wb")) {
         fwrite(pixels.data(), 1, pixels.size(), file);
         fclose(file);
@@ -559,14 +595,14 @@ XrRect2Di SurfaceSwapchain::ToRegionImageRect(const int region, const int32_t x,
                                               const int32_t width, const int32_t height) const {
     const CopyTarget& target = mRegions[region];
     const XrRect2Di& source = target.mSourceRect;
-    const float scaleX = static_cast<float>(target.mSwapchain.mWidth) / source.extent.width;
-    const float scaleY = static_cast<float>(target.mSwapchain.mHeight) / source.extent.height;
+    const float scaleX = static_cast<float>(target.mOutputWidth) / source.extent.width;
+    const float scaleY = static_cast<float>(target.mOutputHeight) / source.extent.height;
     const int32_t left = std::lround((x - source.offset.x) * scaleX);
     const int32_t top = std::lround((y - source.offset.y) * scaleY);
     const int32_t right = std::lround((x + width - source.offset.x) * scaleX);
     const int32_t bottom = std::lround((y + height - source.offset.y) * scaleY);
     // The copy is upright in GL convention, where row 0 is the bottom row.
-    return XrRect2Di{{left, static_cast<int32_t>(target.mSwapchain.mHeight) - bottom},
+    return XrRect2Di{{left, static_cast<int32_t>(target.mOutputHeight) - bottom},
                      {right - left, bottom - top}};
 }
 
