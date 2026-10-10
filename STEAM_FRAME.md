@@ -2,14 +2,14 @@
 
 Steam Frame runs Android apps through **Lepton**, Valve's Android container, with **SteamVR** as the OpenXR runtime inside it. Stock CitraVR does not start there: it requires a set of Meta OpenXR extensions that SteamVR does not offer. The `steam-frame` branch makes those features optional and adds replacements for the ones CitraVR cannot do without.
 
-**Status: experimental, not yet tested on hardware.** The native code compiles and links, and Quest behaviour is meant to be unchanged, but nothing here has been run on a Steam Frame yet. See [Testing checklist](#testing-checklist).
+**Status: experimental.** Tested on a Steam Frame (SteamVR/OpenXR 2.18.2, Lepton Development, Android 11) on 2026-10-10. The APK installs, first-run setup works, and a homebrew title boots into a running VR session with the Frame controller bindings accepted. Not yet checked inside the headset: how the screens look (orientation, colours, sharpness), controller feel, and passthrough. See [Testing checklist](#testing-checklist).
 
 ## What changed
 
 | Quest feature | On Steam Frame |
 |---|---|
 | 10 required OpenXR extensions | Only `XR_KHR_opengl_es_enable` is required. Every other extension is enabled only if the runtime offers it, and the features that need it are skipped or replaced. |
-| `XR_KHR_android_surface_swapchain` (game screen, settings ribbon, keyboard and error panels) | Android draws into a `SurfaceTexture`, and each new frame is copied into an ordinary GLES swapchain (`vr/SurfaceSwapchain.cpp`). Quest keeps the surface-backed swapchains. |
+| `XR_KHR_android_surface_swapchain` (game screen, settings ribbon, keyboard and error panels; confirmed missing on SteamVR 2.18.2) | Android draws into a `SurfaceTexture`, and each new frame is copied into an ordinary GLES swapchain (`vr/SurfaceSwapchain.cpp`). Quest keeps the surface-backed swapchains. |
 | `XR_FB_composition_layer_image_layout` (vertical flip) | Not needed: the copy is already upright. |
 | `XR_FB_passthrough` | If passthrough is selected and the runtime offers `XR_ENVIRONMENT_BLEND_MODE_ALPHA_BLEND`, frames are alpha-blended over the real world with a transparent projection layer at the back. SteamVR only shows passthrough behind a projection layer. Otherwise the void is used. |
 | `XR_KHR_composition_layer_cylinder` (curved screen, immersive modes) | Falls back to the flat screen. |
@@ -72,14 +72,14 @@ Third-party tools such as [FrameLoad](https://github.com/Crypto90/frameload) and
 CitraVR (any headset) can serve a web page for managing ROMs in the games folder:
 
 1. In CitraVR's 2D settings, open **VR → ROM upload server** and turn on **Enable ROM upload server**.
-2. **Server address** shows a URL such as `http://192.168.1.42:8080/k3m9xq2a/`. Open it in a browser on a computer on the same network.
+2. **Server address** shows a URL such as `http://192.168.1.42:8338/k3m9xq2a/`. Open it in a browser on a computer on the same network.
 3. The page lists the ROMs in the games folder (and subfolders up to 3 levels deep), with their sizes and the free space. Delete ROMs from there, or drop new ones onto the page. Uploads go to the top of the games folder, and the game list refreshes when each one finishes.
 
 Notes:
 - The last part of the URL is a random key generated once per install. Without it the server answers "Not found", so only people who can see the address can use it. Traffic is plain HTTP, so use it on a trusted network only.
 - The server keeps running in the background, with an ongoing notification, until you turn it off. It restarts with the app if left on.
 - Only playable ROM types are accepted (`.3ds`, `.cci`, `.cxi`, `.3dsx`, `.app`, `.axf`, `.elf`, and their `z` compressed variants). Large files are streamed straight into the folder with no size limit beyond free space.
-- **Steam Frame:** not yet confirmed. Lepton runs Android in a container, and the address shown may be the container's internal address rather than the headset's. If the page doesn't load, try the headset's own IP with the same port and key. If that fails too, forward the port from the headset, for example `ssh -L 8080:<address shown>:8080 <user>@frame`, then open `http://localhost:8080/<key>/` on the computer.
+- **Steam Frame:** works from the network. Lepton's container shares the headset's IP address and forwards the ports apps listen on, as long as the headset isn't already using them. That's why the server uses port 8338: the Steam client already holds 8080.
 
 Note: Lepton has been reported to reset a container's data after an APK update. Back up your saves (`/sdcard/citra-emu` or the user folder you picked) before updating.
 

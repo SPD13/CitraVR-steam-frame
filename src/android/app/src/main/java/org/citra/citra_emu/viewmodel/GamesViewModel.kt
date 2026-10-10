@@ -13,11 +13,15 @@ import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import org.citra.citra_emu.CitraApplication
+import org.citra.citra_emu.features.romserver.RomServer
 import org.citra.citra_emu.model.Game
 import org.citra.citra_emu.utils.GameHelper
 
@@ -66,6 +70,16 @@ class GamesViewModel : ViewModel() {
             setGames(deserializedGames.toList())
         }
         reloadGames(false)
+
+        // Reload when the ROM upload server adds or deletes ROMs, even while the game
+        // list isn't on screen. Bursts of changes (several uploads) collapse into one
+        // reload, run once any reload already in progress has finished.
+        viewModelScope.launch {
+            RomServer.libraryChanges.drop(1).collectLatest {
+                isReloading.first { reloading -> !reloading }
+                reloadGames(false)
+            }
+        }
     }
 
     fun setGames(games: List<Game>) {

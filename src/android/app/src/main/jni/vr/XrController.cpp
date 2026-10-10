@@ -369,11 +369,13 @@ void InputStateFrame::SyncButtonsAndThumbSticks(
     mThumbrestTouchState[RIGHT_CONTROLLER] = SyncButtonState(
         session, staticState->mThumbRestTouchAction, staticState->mRightHandSubactionPath);
 
-    // Sync index trigger states
-    mIndexTriggerState[LEFT_CONTROLLER] = SyncButtonState(
-        session, staticState->mLeftHandIndexTriggerAction, staticState->mLeftHandSubactionPath);
-    mIndexTriggerState[RIGHT_CONTROLLER] = SyncButtonState(
-        session, staticState->mRightHandIndexTriggerAction, staticState->mRightHandSubactionPath);
+    // Sync index trigger states. These are one action per hand, created without
+    // subaction paths, so they must be queried without one: strict runtimes
+    // (SteamVR) reject the query with XR_ERROR_PATH_UNSUPPORTED otherwise.
+    mIndexTriggerState[LEFT_CONTROLLER] =
+        SyncButtonState(session, staticState->mLeftHandIndexTriggerAction);
+    mIndexTriggerState[RIGHT_CONTROLLER] =
+        SyncButtonState(session, staticState->mRightHandIndexTriggerAction);
 
     // Sync squeeze trigger states
     mSqueezeTriggerState[LEFT_CONTROLLER] = SyncButtonState(

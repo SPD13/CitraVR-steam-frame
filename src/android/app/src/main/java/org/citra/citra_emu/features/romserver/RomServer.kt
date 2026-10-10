@@ -46,7 +46,9 @@ import java.util.concurrent.Executors
  * games folder, so files of any size work without temporary copies.
  */
 object RomServer {
-    const val PORT = 8080
+    // Not 8080: on Steam Frame the Steam client listens on 8080 on the host, so
+    // Lepton could not forward that port from its container to the network.
+    const val PORT = 8338
 
     private const val PREF_TOKEN = "rom_server_token"
     private const val MAX_HEADER_BYTES = 16 * 1024
