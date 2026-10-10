@@ -917,7 +917,7 @@
     <string name="vr_extra_performance_mode">VR Extra Performance Mode</string>
     <string name="rom_server_title">ROM upload server</string>
     <string name="rom_server_enabled">Enable ROM upload server</string>
-    <string name="rom_server_enabled_description">Serves a web page for adding and deleting ROMs in your games folder from a computer on the same network. Keeps running in the background until turned off.</string>
+    <string name="rom_server_enabled_description">Serves a web page for adding and deleting ROMs in your games folder from a computer on the same network. Anyone on the network can use it while it is on. Keeps running in the background until turned off.</string>
     <string name="rom_server_address">Server address</string>
     <string name="rom_server_address_description">Open this address in a browser on a computer on the same network. Tap to refresh.</string>
     <string name="rom_server_off">Off</string>

@@ -72,11 +72,11 @@ Third-party tools such as [FrameLoad](https://github.com/Crypto90/frameload) and
 CitraVR (any headset) can serve a web page for managing ROMs in the games folder:
 
 1. In CitraVR's 2D settings, open **VR → ROM upload server** and turn on **Enable ROM upload server**.
-2. **Server address** shows a URL such as `http://192.168.1.42:8338/k3m9xq2a/`. Open it in a browser on a computer on the same network.
+2. **Server address** shows a URL such as `http://192.168.1.42:8338`. Open it in a browser on a computer on the same network.
 3. The page lists the ROMs in the games folder (and subfolders up to 3 levels deep), with their sizes and the free space. Delete ROMs from there, or drop new ones onto the page. Uploads go to the top of the games folder, and the game list refreshes when each one finishes.
 
 Notes:
-- The last part of the URL is a random key generated once per install. Without it the server answers "Not found", so only people who can see the address can use it. Traffic is plain HTTP, so use it on a trusted network only.
+- There is no password: anyone on the same network can list, upload and delete ROMs while the server is on. Use it on a trusted network only, and turn it off when you are done.
 - The server keeps running in the background, with an ongoing notification, until you turn it off. It restarts with the app if left on.
 - Only playable ROM types are accepted (`.3ds`, `.cci`, `.cxi`, `.3dsx`, `.app`, `.axf`, `.elf`, and their `z` compressed variants). Large files are streamed straight into the folder with no size limit beyond free space.
 - **Steam Frame:** works from the network. Lepton's container shares the headset's IP address and forwards the ports apps listen on, as long as the headset isn't already using them. That's why the server uses port 8338: the Steam client already holds 8080.

@@ -32,7 +32,6 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketException
 import java.net.URLDecoder
-import java.security.SecureRandom
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -40,17 +39,16 @@ import java.util.concurrent.Executors
  * A small HTTP server that lets a computer on the same network list, upload and
  * delete ROMs in the games folder chosen in CitraVR.
  *
- * Every URL starts with a random token (kept across restarts so bookmarks keep
- * working), so other devices on the network cannot use it without the address
- * shown in settings. Uploads are raw PUT bodies streamed straight into the
- * games folder, so files of any size work without temporary copies.
+ * The page is served at the root, without any access control, so anyone on the
+ * same network can use it while it is enabled. Uploads are raw PUT bodies
+ * streamed straight into the games folder, so files of any size work without
+ * temporary copies.
  */
 object RomServer {
     // Not 8080: on Steam Frame the Steam client listens on 8080 on the host, so
     // Lepton could not forward that port from its container to the network.
     const val PORT = 8338
 
-    private const val PREF_TOKEN = "rom_server_token"
     private const val MAX_HEADER_BYTES = 16 * 1024
     private const val COPY_BUFFER_BYTES = 1024 * 1024
     private const val PARTIAL_SUFFIX = ".part"
@@ -75,7 +73,6 @@ object RomServer {
     private lateinit var appContext: Context
     private var serverSocket: ServerSocket? = null
     private var executor: ExecutorService? = null
-    private var token = ""
 
     // Called when an upload starts and ends, so the service can keep Wi-Fi awake.
     var onTransferActive: ((Boolean) -> Unit)? = null
@@ -86,7 +83,6 @@ object RomServer {
             return
         }
         appContext = context.applicationContext
-        token = getOrCreateToken(appContext)
         _state.value = State.Stopped
         try {
             val socket = ServerSocket()
@@ -128,16 +124,6 @@ object RomServer {
         }
     }
 
-    private fun getOrCreateToken(context: Context): String {
-        val preferences = PreferenceManager.getDefaultSharedPreferences(context)
-        preferences.getString(PREF_TOKEN, null)?.let { return it }
-        val alphabet = "abcdefghijkmnpqrstuvwxyz23456789"
-        val random = SecureRandom()
-        val newToken = (1..8).map { alphabet[random.nextInt(alphabet.length)] }.joinToString("")
-        preferences.edit().putString(PREF_TOKEN, newToken).apply()
-        return newToken
-    }
-
     private fun getUrls(): List<String> {
         val addresses = mutableListOf<Pair<String, String>>()
         try {
@@ -156,7 +142,7 @@ object RomServer {
         // Wi-Fi first.
         return addresses
             .sortedBy { (name, _) -> if (name.startsWith("wlan")) 0 else 1 }
-            .map { (_, address) -> "http://$address:$PORT/$token/" }
+            .map { (_, address) -> "http://$address:$PORT" }
             .distinct()
     }
 
@@ -250,16 +236,7 @@ object RomServer {
     private fun decode(value: String): String = URLDecoder.decode(value, "UTF-8")
 
     private fun route(request: Request, output: OutputStream) {
-        val prefix = "/$token"
-        if (request.path == prefix) {
-            sendRedirect(output, "$prefix/")
-            return
-        }
-        if (!request.path.startsWith("$prefix/")) {
-            sendText(output, 404, "text/plain", "Not found")
-            return
-        }
-        when (request.method to request.path.removePrefix(prefix)) {
+        when (request.method to request.path) {
             "GET" to "/" -> sendPage(output)
             "GET" to "/api/files" -> sendJson(output, 200, listFiles())
             "DELETE" to "/api/files" -> {
@@ -277,14 +254,6 @@ object RomServer {
     private fun sendPage(output: OutputStream) {
         val page = appContext.assets.open("rom_server/index.html").use { it.readBytes() }
         sendBytes(output, 200, "text/html; charset=utf-8", page)
-    }
-
-    private fun sendRedirect(output: OutputStream, location: String) {
-        output.write(
-            ("HTTP/1.1 302 Found\r\nLocation: $location\r\nContent-Length: 0\r\n" +
-                "Connection: close\r\n\r\n").toByteArray(Charsets.UTF_8)
-        )
-        output.flush()
     }
 
     private fun sendJson(output: OutputStream, status: Int, json: Any) {
