@@ -51,6 +51,12 @@ public:
     XrAction mThumbClickAction     = XR_NULL_HANDLE;
     XrAction mSqueezeTriggerAction = XR_NULL_HANDLE;
     XrAction mThumbRestTouchAction = XR_NULL_HANDLE;
+
+    // Steam Frame left d-pad.
+    XrAction mDpadUpAction = XR_NULL_HANDLE;
+    XrAction mDpadDownAction = XR_NULL_HANDLE;
+    XrAction mDpadLeftAction = XR_NULL_HANDLE;
+    XrAction mDpadRightAction = XR_NULL_HANDLE;
 };
 
 struct InputStateFrame {
@@ -78,6 +84,12 @@ struct InputStateFrame {
     // Right hand buttons.
     XrActionStateBoolean mAButtonState;
     XrActionStateBoolean mBButtonState;
+
+    // D-pad (Steam Frame left controller).
+    XrActionStateBoolean mDpadUpState;
+    XrActionStateBoolean mDpadDownState;
+    XrActionStateBoolean mDpadLeftState;
+    XrActionStateBoolean mDpadRightState;
 
     XrSpaceLocation mHandPositions[NUM_CONTROLLERS] = {{XR_TYPE_SPACE_LOCATION},
                                                        {XR_TYPE_SPACE_LOCATION}};

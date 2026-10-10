@@ -53,12 +53,13 @@ License     :   Licensed under GPLv3 or any later version.
 #pragma once
 
 #include "../OpenXR.h"
-#include "../Swapchain.h"
+#include "../SurfaceSwapchain.h"
 #include "../utils/Common.h"
 #include "core/3ds.h" // for 3ds screen sizes.
 
 #include <jni.h>
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -210,7 +211,7 @@ private:
     static_assert((SURFACE_HEIGHT_UNSCALED % 2) == 0, "Swapchain height must be a multiple of 2");
 
     const XrSession mSession;
-    Swapchain       mSwapchain;
+    std::unique_ptr<SurfaceSwapchain> mSurfaceSwapchain;
 
     // Density scale for surface. Citra's auto-scale sets this as the internal
     // resolution.

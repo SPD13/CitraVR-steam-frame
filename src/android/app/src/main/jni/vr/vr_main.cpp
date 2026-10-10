@@ -63,6 +63,9 @@ void       PrioritizeTid(const int tid) {
               ALOGE("PrioritizeTid() called before session is initialized");
               return;
     }
+    if (!OpenXr::GetExtensions().mAndroidThreadSettings) {
+        return;
+    }
           PFN_xrSetAndroidApplicationThreadKHR pfnSetAndroidApplicationThreadKHR = NULL;
           OXR(xrGetInstanceProcAddr(OpenXr::GetInstance(), "xrSetAndroidApplicationThreadKHR",
                                     (PFN_xrVoidFunction*)(&pfnSetAndroidApplicationThreadKHR)));
@@ -244,6 +247,7 @@ uint32_t GetDefaultGameResolutionFactorForHmd(const VRSettings::HMDType& hmdType
     static constexpr uint32_t kDefaultResolutionFactor = 2;
     switch (hmdType) {
         case VRSettings::HMDType::QUEST3:
+        case VRSettings::HMDType::STEAMFRAME:
             return 3;
         case VRSettings::HMDType::UNKNOWN:
             ALOGW("Warning: Unknown HMD type, using default scale factor of {}",
@@ -384,7 +388,14 @@ private:
         // If user set "Void" in settings, don't render passthrough
         if (VRSettings::values.vr_environment !=
             static_cast<int32_t>(VRSettings::VREnvironmentType::VOID)) {
-            mPassthroughLayer = std::make_unique<PassthroughLayer>(gOpenXr->mSession);
+            if (OpenXr::GetExtensions().mPassthroughFB) {
+                mPassthroughLayer = std::make_unique<PassthroughLayer>(gOpenXr->mSession);
+            } else if (gOpenXr->mAlphaBlendSupported) {
+                mAlphaBlendPassthroughLayer =
+                    std::make_unique<AlphaBlendPassthroughLayer>(gOpenXr->mSession);
+            } else {
+                ALOGW("Passthrough is not supported by this runtime; using the void");
+            }
         }
 
         // Create the game surface layer.
@@ -534,8 +545,15 @@ private:
         //  Set the compositor layers for this frame.
         //////////////////////////////////////////////////
 
+        // Copy any new UI frames into the UI layers' swapchains (if the runtime needs
+        // that), whether or not they are shown, so Android never waits on them.
+        mRibbonLayer->UpdateSurface();
+        mKeyboardLayer->UpdateSurface();
+        mErrorMessageLayer->UpdateSurface();
+
         uint32_t                        layerCount = 0;
         std::vector<XrCompositionLayer> layers(gOpenXr->mMaxLayerCount, XrCompositionLayer{});
+        XrEnvironmentBlendMode environmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
         {
 
             // First, add the passthrough layer.
@@ -544,6 +562,14 @@ private:
                 XrCompositionLayerPassthroughFB passthroughLayer = {};
                 mPassthroughLayer->Frame(passthroughLayer);
                 layers[layerCount++].mPassthrough = passthroughLayer;
+            } else if (mAlphaBlendPassthroughLayer != nullptr) {
+                XrCompositionLayerProjection passthroughLayer = {};
+                if (mAlphaBlendPassthroughLayer->Frame(gOpenXr->mSession, gOpenXr->mLocalSpace,
+                                                       frameState.predictedDisplayTime,
+                                                       passthroughLayer)) {
+                    layers[layerCount++].mProjection = passthroughLayer;
+                    environmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_ALPHA_BLEND;
+                }
             }
 
             // Game surface (upper and lower panels) are in front of the passthrough layer.
@@ -586,7 +612,7 @@ private:
         const XrFrameEndInfo endFrameInfo = {XR_TYPE_FRAME_END_INFO,
                                              nullptr,
                                              frameState.predictedDisplayTime,
-                                             XR_ENVIRONMENT_BLEND_MODE_OPAQUE,
+                                             environmentBlendMode,
                                              static_cast<uint32_t>(layerHeaders.size()),
                                              layerHeaders.data()};
         OXR(xrEndFrame(gOpenXr->mSession, &endFrameInfo));
@@ -670,6 +696,14 @@ private:
         ForwardButtonStateIfNeeded(
             jni, mActivityObject, mForwardVRInputMethodID, 103 /* BUTTON_R1 */,
             inputState.mSqueezeTriggerState[InputStateFrame::RIGHT_CONTROLLER], "r1");
+        ForwardButtonStateIfNeeded(jni, mActivityObject, mForwardVRInputMethodID, 19 /* DPAD_UP */,
+                                   inputState.mDpadUpState, "dpad_up");
+        ForwardButtonStateIfNeeded(jni, mActivityObject, mForwardVRInputMethodID,
+                                   20 /* DPAD_DOWN */, inputState.mDpadDownState, "dpad_down");
+        ForwardButtonStateIfNeeded(jni, mActivityObject, mForwardVRInputMethodID,
+                                   21 /* DPAD_LEFT */, inputState.mDpadLeftState, "dpad_left");
+        ForwardButtonStateIfNeeded(jni, mActivityObject, mForwardVRInputMethodID,
+                                   22 /* DPAD_RIGHT */, inputState.mDpadRightState, "dpad_right");
 
         {
             // Right is circlepad, left is leftstick/circlepad, dpad is whatever
@@ -1179,35 +1213,39 @@ private:
             // session object.
             if (newAppState.mIsXrSessionActive) {
                 ALOGI("{}(): Entered XR_SESSION_STATE_READY", __func__);
-                PFN_xrPerfSettingsSetPerformanceLevelEXT pfnPerfSettingsSetPerformanceLevelEXT =
-                    NULL;
-                OXR(xrGetInstanceProcAddr(
-                    gOpenXr->mInstance, "xrPerfSettingsSetPerformanceLevelEXT",
-                    (PFN_xrVoidFunction*)(&pfnPerfSettingsSetPerformanceLevelEXT)));
+                if (OpenXr::GetExtensions().mPerformanceSettings) {
+                    PFN_xrPerfSettingsSetPerformanceLevelEXT pfnPerfSettingsSetPerformanceLevelEXT =
+                        NULL;
+                    OXR(xrGetInstanceProcAddr(
+                        gOpenXr->mInstance, "xrPerfSettingsSetPerformanceLevelEXT",
+                        (PFN_xrVoidFunction*)(&pfnPerfSettingsSetPerformanceLevelEXT)));
 
-                OXR(pfnPerfSettingsSetPerformanceLevelEXT(gOpenXr->mSession,
-                                                          XR_PERF_SETTINGS_DOMAIN_CPU_EXT,
-                                                          VRSettings::values.cpu_level));
-                OXR(pfnPerfSettingsSetPerformanceLevelEXT(
-                    gOpenXr->mSession, XR_PERF_SETTINGS_DOMAIN_GPU_EXT, kGpuPerfLevel));
-                ALOGI("{}(): Set clock levels to CPU:{}, GPU:{}", __FUNCTION__,
-                      VRSettings::values.cpu_level, kGpuPerfLevel);
-
-                PFN_xrSetAndroidApplicationThreadKHR pfnSetAndroidApplicationThreadKHR = NULL;
-                OXR(xrGetInstanceProcAddr(
-                    gOpenXr->mInstance, "xrSetAndroidApplicationThreadKHR",
-                    (PFN_xrVoidFunction*)(&pfnSetAndroidApplicationThreadKHR)));
-
-                if (vr::gPriorityTid > 0) {
-                    ALOGD("Setting prio tid from main {}", vr::gPriorityTid);
-                    OXR(pfnSetAndroidApplicationThreadKHR(gOpenXr->mSession,
-                                                          XR_ANDROID_THREAD_TYPE_RENDERER_MAIN_KHR,
-                                                          vr::gPriorityTid));
-                } else {
-                    ALOGD("Not setting prio tid from main");
+                    OXR(pfnPerfSettingsSetPerformanceLevelEXT(gOpenXr->mSession,
+                                                              XR_PERF_SETTINGS_DOMAIN_CPU_EXT,
+                                                              VRSettings::values.cpu_level));
+                    OXR(pfnPerfSettingsSetPerformanceLevelEXT(
+                        gOpenXr->mSession, XR_PERF_SETTINGS_DOMAIN_GPU_EXT, kGpuPerfLevel));
+                    ALOGI("{}(): Set clock levels to CPU:{}, GPU:{}", __FUNCTION__,
+                          VRSettings::values.cpu_level, kGpuPerfLevel);
                 }
-                OXR(pfnSetAndroidApplicationThreadKHR(
-                    gOpenXr->mSession, XR_ANDROID_THREAD_TYPE_APPLICATION_MAIN_KHR, gettid()));
+
+                if (OpenXr::GetExtensions().mAndroidThreadSettings) {
+                    PFN_xrSetAndroidApplicationThreadKHR pfnSetAndroidApplicationThreadKHR = NULL;
+                    OXR(xrGetInstanceProcAddr(
+                        gOpenXr->mInstance, "xrSetAndroidApplicationThreadKHR",
+                        (PFN_xrVoidFunction*)(&pfnSetAndroidApplicationThreadKHR)));
+
+                    if (vr::gPriorityTid > 0) {
+                        ALOGD("Setting prio tid from main {}", vr::gPriorityTid);
+                        OXR(pfnSetAndroidApplicationThreadKHR(
+                            gOpenXr->mSession, XR_ANDROID_THREAD_TYPE_RENDERER_MAIN_KHR,
+                            vr::gPriorityTid));
+                    } else {
+                        ALOGD("Not setting prio tid from main");
+                    }
+                    OXR(pfnSetAndroidApplicationThreadKHR(
+                        gOpenXr->mSession, XR_ANDROID_THREAD_TYPE_APPLICATION_MAIN_KHR, gettid()));
+                }
 
                 if (mGameSurfaceLayer) {
                     ALOGD("SetSurface");
@@ -1400,12 +1438,13 @@ private:
     // App state from previous frame.
     AppState mLastAppState;
 
-    std::unique_ptr<CursorLayer>      mCursorLayer;
-    std::unique_ptr<UILayer>          mErrorMessageLayer;
+    std::unique_ptr<CursorLayer> mCursorLayer;
+    std::unique_ptr<UILayer> mErrorMessageLayer;
     std::unique_ptr<GameSurfaceLayer> mGameSurfaceLayer;
     std::unique_ptr<PassthroughLayer> mPassthroughLayer;
-    std::unique_ptr<UILayer>          mKeyboardLayer;
-    std::unique_ptr<RibbonLayer>      mRibbonLayer;
+    std::unique_ptr<AlphaBlendPassthroughLayer> mAlphaBlendPassthroughLayer;
+    std::unique_ptr<UILayer> mKeyboardLayer;
+    std::unique_ptr<RibbonLayer> mRibbonLayer;
 
     std::unique_ptr<InputStateStatic> mInputStateStatic;
     InputStateFrame                   mInputStateFrame;
@@ -1535,7 +1574,8 @@ extern "C" JNIEXPORT void JNICALL Java_org_citra_citra_1emu_vr_utils_VrMessageQu
 extern "C" JNIEXPORT jfloatArray JNICALL
 Java_org_citra_citra_1emu_vr_ui_VrRibbonLayer_nativeGetStatsOXR(JNIEnv* env, jobject thiz) {
 
-    if (vr::gSession == XR_NULL_HANDLE || OpenXr::GetInstance() == XR_NULL_HANDLE) {
+    if (vr::gSession == XR_NULL_HANDLE || OpenXr::GetInstance() == XR_NULL_HANDLE ||
+        !OpenXr::GetExtensions().mPerformanceMetrics) {
         return nullptr;
     }
 

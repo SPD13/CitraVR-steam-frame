@@ -1,0 +1,94 @@
+# CitraVR on Steam Frame
+
+Steam Frame runs Android apps through **Lepton**, Valve's Android container, with **SteamVR** as the OpenXR runtime inside it. Stock CitraVR does not start there: it requires a set of Meta OpenXR extensions that SteamVR does not offer. The `steam-frame` branch makes those features optional and adds replacements for the ones CitraVR cannot do without.
+
+**Status: experimental, not yet tested on hardware.** The native code compiles and links, and Quest behaviour is meant to be unchanged, but nothing here has been run on a Steam Frame yet. See [Testing checklist](#testing-checklist).
+
+## What changed
+
+| Quest feature | On Steam Frame |
+|---|---|
+| 10 required OpenXR extensions | Only `XR_KHR_opengl_es_enable` is required. Every other extension is enabled only if the runtime offers it, and the features that need it are skipped or replaced. |
+| `XR_KHR_android_surface_swapchain` (game screen, settings ribbon, keyboard and error panels) | Android draws into a `SurfaceTexture`, and each new frame is copied into an ordinary GLES swapchain (`vr/SurfaceSwapchain.cpp`). Quest keeps the surface-backed swapchains. |
+| `XR_FB_composition_layer_image_layout` (vertical flip) | Not needed: the copy is already upright. |
+| `XR_FB_passthrough` | If passthrough is selected and the runtime offers `XR_ENVIRONMENT_BLEND_MODE_ALPHA_BLEND`, frames are alpha-blended over the real world with a transparent projection layer at the back. SteamVR only shows passthrough behind a projection layer. Otherwise the void is used. |
+| `XR_KHR_composition_layer_cylinder` (curved screen, immersive modes) | Falls back to the flat screen. |
+| `XR_EXT_performance_settings`, `XR_KHR_android_thread_settings`, `XR_META_performance_metrics` | Skipped. The ribbon's performance stats are empty. |
+| Touch controller bindings | Kept. With `XR_VALVE_frame_controller_interaction`, Steam Frame controllers also get their own bindings (below). |
+| HMD detection | Lepton reports model `Lepton`. It gets the Quest 3 default resolution factor (3x). |
+
+`XR_KHR_android_create_instance` is now passed when offered, since SteamVR expects it.
+
+## Controls
+
+On Steam Frame controllers (if SteamVR accepts the Frame controller profile):
+
+| Steam Frame | 3DS |
+|---|---|
+| Right A, B, X, Y | A, B, X, Y |
+| Left d-pad | D-pad |
+| Bumpers, and grips | L, R |
+| Left stick | Circle pad |
+| Right stick | C-stick |
+| Left View button | Toggle the lower menu (as Menu on Quest) |
+| Triggers | Pointer click |
+
+If the Frame profile is rejected, SteamVR maps the Frame controllers onto the Quest Touch bindings. In that case, Frame's three upper face buttons on each side act as Touch B/Y.
+
+## Building
+
+The APK is the same one used on Quest (`arm64-v8a`):
+
+```sh
+git submodule update --init --recursive
+cd src/android
+./gradlew assembleRelease
+# -> app/build/outputs/apk/release/app-release.apk
+```
+
+You need JDK 17, Android SDK platform 35, and NDK `27.3.13750724`. The GitHub Actions workflow (`.github/workflows/android.yml`) builds the same APK on every push and uploads it as an artifact.
+
+## Installing
+
+Turn on Developer Mode on the Frame first (Steam Settings → Developer).
+
+### With adb (simplest for testing)
+
+1. On the Frame, launch **Lepton Development** from the Steam library. A floating Android home screen appears.
+2. From your PC, run:
+   ```sh
+   adb connect frame            # or the headset's IP address
+   adb install -r app-release.apk
+   adb push "My Game.3ds" /sdcard/Download/
+   ```
+3. Open CitraVR from the Android home screen in the floating window, add `/sdcard/Download` (or wherever you pushed games) as the games folder, and start a game. The game opens in VR.
+
+### As a Steam library entry
+
+Third-party tools such as [FrameLoad](https://github.com/Crypto90/frameload) and [FrameDrop](https://steamdeckhq.com/news/framedrop-sideloader-announced/) add an APK to the Steam library. To do it by hand from desktop mode, add the APK as a non-Steam game, then in its Properties → Compatibility, force the **Lepton** compatibility tool. Put an empty file named `lepton-show-flatscreen` next to the APK. Without it, SteamVR does not show CitraVR's 2D game list.
+
+Note: Lepton has been reported to reset a container's data after an APK update. Back up your saves (`/sdcard/citra-emu` or the user folder you picked) before updating.
+
+## Debugging
+
+- `adb logcat | grep -i -E "citra|openxr|steamvr"` while connected to Lepton. Startup logs which optional extensions are missing, the runtime name and version, and whether each panel uses a surface-backed or SurfaceTexture-fed swapchain.
+- On the Frame itself (SSH or Konsole): `lepton dev logcat`, and the launch logs in `~/.local/share/Steam/logs/lepton-*`.
+- Valve's docs: [Connecting adb to Lepton](https://partner.steamgames.com/doc/steamhardware/steamframe/adb_lepton), [Steam Frame Debugging](https://partner.steamgames.com/doc/steamhardware/steamframe/debugging).
+
+## Testing checklist
+
+Report each of these, with the logcat for any that fail:
+
+1. The 2D game list appears, and starting a game enters VR without a crash.
+2. The game screen is upright, sharp, and not mirrored. Both eyes show their own 3D image.
+3. The colours look the same as on a phone, not washed out or too dark. (This checks the sRGB handling of the copy.)
+4. The lower touch screen, settings ribbon, keyboard, and error panel appear, are upright, and respond to the pointer.
+5. Controller bindings: logcat shows `Using Steam Frame controller bindings`, and the table above matches.
+6. Passthrough (Settings → VR → environment): the real room is visible behind the screens.
+7. Performance: full-speed games stay at full speed. The extra copy costs a few hundred microseconds of GPU time per frame.
+
+## Known limitations
+
+- Curved screen and immersive modes fall back to the flat screen (no cylinder layers in SteamVR).
+- No CPU/GPU clock control and no performance stats overlay.
+- SteamVR allows 16 swapchains per session. CitraVR uses 6 (7 with passthrough).

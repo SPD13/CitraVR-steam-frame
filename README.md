@@ -49,6 +49,7 @@ CitraVR supports the following devices:
 - Meta Quest Pro
 - Meta Quest 3
 - Meta Quest 3S
+- Steam Frame (experimental, see [STEAM_FRAME.md](STEAM_FRAME.md))
 
 ### Games
 For a full list of games that work well on CitraVR, please visit the [CitraVR Game Compatability List](https://docs.google.com/spreadsheets/d/1viN8_MWO1HW9QXlkT-TdCGQbH1g660mKsIp1ZTARdho/edit?usp=sharing)

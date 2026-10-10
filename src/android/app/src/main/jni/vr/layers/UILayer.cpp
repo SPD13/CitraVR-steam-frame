@@ -183,7 +183,7 @@ void UILayer::Frame(const XrSpace&                   space,
     XrCompositionLayerQuad layer = {};
 
     layer.type       = XR_TYPE_COMPOSITION_LAYER_QUAD;
-    layer.next       = &kVerticalFlipLayout;
+    layer.next = mSurfaceSwapchain->GetLayerNext();
     layer.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
     layer.layerFlags |= XR_COMPOSITION_LAYER_CORRECT_CHROMATIC_ABERRATION_BIT;
     layer.layerFlags |= XR_COMPOSITION_LAYER_UNPREMULTIPLIED_ALPHA_BIT;
@@ -193,14 +193,15 @@ void UILayer::Frame(const XrSpace&                   space,
 
     layer.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
     memset(&layer.subImage, 0, sizeof(XrSwapchainSubImage));
-    layer.subImage.swapchain               = mSwapchain.mHandle;
+    const Swapchain& swapchain = mSurfaceSwapchain->GetSwapchain();
+    layer.subImage.swapchain = swapchain.mHandle;
     layer.subImage.imageRect.offset.x      = 0;
     layer.subImage.imageRect.offset.y      = 0;
-    layer.subImage.imageRect.extent.width  = mSwapchain.mWidth;
-    layer.subImage.imageRect.extent.height = mSwapchain.mHeight;
+    layer.subImage.imageRect.extent.width = swapchain.mWidth;
+    layer.subImage.imageRect.extent.height = swapchain.mHeight;
     layer.subImage.imageArrayIndex         = 0;
     layer.pose                             = mWorldFromPanel;
-    const auto scale  = GetDensityScaleForSize(mSwapchain.mWidth, mSwapchain.mHeight, 1.0f);
+    const auto scale = GetDensityScaleForSize(swapchain.mWidth, swapchain.mHeight, 1.0f);
     layer.size.width  = scale.x;
     layer.size.height = scale.y;
     layers[layerCount++].mQuad = layer;
@@ -210,8 +211,9 @@ bool UILayer::GetRayIntersectionWithPanel(const XrVector3f& start,
                                           const XrVector3f& end,
                                           XrVector2f&       result2d,
                                           XrPosef&          result3d) const {
-    const XrVector2f scale = GetDensityScaleForSize(mSwapchain.mWidth, mSwapchain.mHeight, 1.0f);
-    return ::GetRayIntersectionWithPanel(mWorldFromPanel, mSwapchain.mWidth, mSwapchain.mHeight,
+    const Swapchain& swapchain = mSurfaceSwapchain->GetSwapchain();
+    const XrVector2f scale = GetDensityScaleForSize(swapchain.mWidth, swapchain.mHeight, 1.0f);
+    return ::GetRayIntersectionWithPanel(mWorldFromPanel, swapchain.mWidth, swapchain.mHeight,
                                          scale, start, end, result2d, result3d);
 }
 
@@ -248,10 +250,7 @@ int32_t UILayer::Init(const jclass classObject, const jobject activityObject,
 }
 
 void UILayer::Shutdown() {
-    xrDestroySwapchain(mSwapchain.mHandle);
-    mSwapchain.mHandle = XR_NULL_HANDLE;
-    mSwapchain.mWidth  = 0;
-    mSwapchain.mHeight = 0;
+    mSurfaceSwapchain.reset();
     mVrUILayerClass    = nullptr;
     // These steps are not strictly necessary for app shutdown, as references are cleaned up when
     // the JVM is destroyed, but memory-saving if this class is destroyed/re-initialized at runtime.
@@ -260,6 +259,8 @@ void UILayer::Shutdown() {
 }
 
 int UILayer::CreateSwapchain() {
+    uint32_t width = 0;
+    uint32_t height = 0;
     {
         AndroidWindowBounds viewBounds;
         if (mEnv->ExceptionCheck()) { mEnv->ExceptionClear(); }
@@ -280,42 +281,17 @@ int UILayer::CreateSwapchain() {
                   viewBounds.Height());
             return -2;
         }
-        mSwapchain.mWidth  = viewBounds.Width();
-        mSwapchain.mHeight = viewBounds.Height();
+        width = viewBounds.Width();
+        height = viewBounds.Height();
     }
     // Initialize swapchain.
     {
-        XrSwapchainCreateInfo swapchainCreateInfo;
-        memset(&swapchainCreateInfo, 0, sizeof(swapchainCreateInfo));
-        swapchainCreateInfo.type = XR_TYPE_SWAPCHAIN_CREATE_INFO;
-        swapchainCreateInfo.next = nullptr;
-        swapchainCreateInfo.usageFlags =
-            XR_SWAPCHAIN_USAGE_SAMPLED_BIT | XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;
-        swapchainCreateInfo.format      = 0;
-        swapchainCreateInfo.sampleCount = 0;
-        swapchainCreateInfo.width       = mSwapchain.mWidth;
-        swapchainCreateInfo.height      = mSwapchain.mHeight;
-        swapchainCreateInfo.faceCount   = 0;
-        swapchainCreateInfo.arraySize   = 0;
-        swapchainCreateInfo.mipCount    = 0;
+        mSurfaceSwapchain = std::make_unique<SurfaceSwapchain>(mSession, mEnv, width, height);
 
-        PFN_xrCreateSwapchainAndroidSurfaceKHR pfnCreateSwapchainAndroidSurfaceKHR = nullptr;
-        assert(OpenXr::GetInstance() != XR_NULL_HANDLE);
-        XrResult xrResult =
-            xrGetInstanceProcAddr(OpenXr::GetInstance(), "xrCreateSwapchainAndroidSurfaceKHR",
-                                  (PFN_xrVoidFunction*)(&pfnCreateSwapchainAndroidSurfaceKHR));
-        if (xrResult != XR_SUCCESS || pfnCreateSwapchainAndroidSurfaceKHR == nullptr) {
-            FAIL("xrGetInstanceProcAddr failed for "
-                 "xrCreateSwapchainAndroidSurfaceKHR");
-        }
+        ALOGD("UILayer: created swapchain {}x{}", width, height);
 
-        OXR(pfnCreateSwapchainAndroidSurfaceKHR(mSession, &swapchainCreateInfo, &mSwapchain.mHandle,
-                                                &mSurface));
-
-        ALOGD("UILayer: created swapchain {}x{}", mSwapchain.mWidth, mSwapchain.mHeight);
-
-        mEnv->CallIntMethod(mVrUILayerObject, mSetSurfaceMethodId, mSurface, (int)mSwapchain.mWidth,
-                            (int)mSwapchain.mHeight);
+        mEnv->CallIntMethod(mVrUILayerObject, mSetSurfaceMethodId, mSurfaceSwapchain->GetSurface(),
+                            (int)width, (int)height);
         if (mEnv->ExceptionCheck()) {
             mEnv->ExceptionDescribe();
             mEnv->ExceptionClear();
@@ -323,6 +299,10 @@ int UILayer::CreateSwapchain() {
         }
     }
     return 0;
+}
+
+void UILayer::UpdateSurface() {
+    mSurfaceSwapchain->Update();
 }
 
 void UILayer::SendClickToUI(const XrVector2f& pos2d, const int type) {

@@ -32,6 +32,7 @@ add_library(citra-android SHARED
     native_log.cpp
     # VR-specific
     vr/OpenXR.cpp
+    vr/SurfaceSwapchain.cpp
     vr/gl/Egl.cpp
     vr/XrController.cpp
     vr/vr_main.cpp

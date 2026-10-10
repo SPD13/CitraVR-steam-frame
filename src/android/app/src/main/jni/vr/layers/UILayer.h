@@ -49,9 +49,10 @@ License     :   Licensed under GPLv3 or any later version.
 #pragma once
 
 #include "../OpenXR.h"
-#include "../Swapchain.h"
+#include "../SurfaceSwapchain.h"
 #include "../utils/Common.h"
 
+#include <memory>
 #include <string>
 
 /*
@@ -80,6 +81,12 @@ public:
             const XrQuaternionf&& orientation, JNIEnv* jni, jobject activityObject,
             const XrSession& session);
     ~UILayer();
+
+    /** Called once-per-frame, whether or not the layer is visible. Copies the
+     *  UI Android last drew into the layer's swapchain, where the runtime needs
+     *  that (see SurfaceSwapchain).
+     */
+    void UpdateSurface();
 
     /** Called once-per-frame. Populates the given layer list with a single layer
      *  representing the UI layer.
@@ -152,14 +159,13 @@ private:
     int CreateSwapchain();
 
     const XrSession mSession;
-    Swapchain       mSwapchain;
+    std::unique_ptr<SurfaceSwapchain> mSurfaceSwapchain;
 
     //============================
     // JNI objects
     JNIEnv* mEnv             = nullptr;
     jclass  mVrUILayerClass  = nullptr;
     jobject mVrUILayerObject = nullptr;
-    jobject mSurface         = nullptr;
 
     //============================
     // JNI methods

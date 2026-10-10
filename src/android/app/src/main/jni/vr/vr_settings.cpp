@@ -30,6 +30,9 @@ HMDType HmdTypeFromStr(const std::string& hmdType) {
         return HMDType::QUESTPRO;
     } else if (hmdType == "Quest 3S" || hmdType == "Quest 3s" || hmdType == "Panther") {
         return HMDType::QUEST3S;
+    } else if (hmdType == "Lepton") {
+        // Valve's Android container on Steam Frame reports itself as model "Lepton".
+        return HMDType::STEAMFRAME;
     }
     return HMDType::UNKNOWN;
 }

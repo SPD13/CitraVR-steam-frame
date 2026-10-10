@@ -26,11 +26,32 @@ License     :   Licensed under GPLv3 or any later version.
 #define OXR(func) OXR_CheckErrors(func, #func, true);
 void OXR_CheckErrors(XrResult result, const char* function, bool failOnError);
 
+// Not in the OpenXR headers this project builds against.
+#define XR_VALVE_FRAME_CONTROLLER_INTERACTION_EXTENSION_NAME "XR_VALVE_frame_controller_interaction"
+
+// Optional extensions, recorded at instance creation. Quest runtimes offer all of
+// the Meta/FB ones; SteamVR (Steam Frame, via Lepton) offers few of them, so
+// every feature built on one of these must check it first.
+struct OpenXrExtensions {
+    bool mAndroidCreateInstance = false;
+    bool mPerformanceSettings = false;
+    bool mAndroidThreadSettings = false;
+    bool mCompositionLayerCylinder = false;
+    bool mCompositionLayerEquirect2 = false;
+    bool mAndroidSurfaceSwapchain = false;
+    bool mCompositionLayerImageLayout = false;
+    bool mCompositionLayerSettings = false;
+    bool mPassthroughFB = false;
+    bool mPerformanceMetrics = false;
+    bool mValveFrameControllerInteraction = false;
+};
+
 class OpenXr {
 
 public:
     static XrInstance& GetInstance();
-    int32_t            Init(JavaVM* const jvm, const jobject activityObject);
+    static const OpenXrExtensions& GetExtensions();
+    int32_t Init(JavaVM* const jvm, const jobject activityObject);
     void               Shutdown();
 
     XrInstance mInstance = XR_NULL_HANDLE;
@@ -52,6 +73,11 @@ public:
     XrSpace mLocalSpace    = XR_NULL_HANDLE;
     XrSpace mStageSpace    = XR_NULL_HANDLE;
     size_t  mMaxLayerCount = 0;
+
+    // True when the runtime can composite the app's layers over the real world with
+    // XR_ENVIRONMENT_BLEND_MODE_ALPHA_BLEND. Used for passthrough when XR_FB_passthrough
+    // is missing.
+    bool mAlphaBlendSupported = false;
 
     // EGL context
     std::unique_ptr<EglContext> mEglContext;
