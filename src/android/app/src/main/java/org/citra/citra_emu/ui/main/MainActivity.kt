@@ -55,6 +55,7 @@ import org.citra.citra_emu.R
 import org.citra.citra_emu.contracts.OpenFileResultContract
 import org.citra.citra_emu.databinding.ActivityMainBinding
 import org.citra.citra_emu.dialogs.NetPlayDialog
+import org.citra.citra_emu.features.romserver.RomServerService
 import org.citra.citra_emu.features.settings.model.Settings
 import org.citra.citra_emu.features.settings.model.SettingsViewModel
 import org.citra.citra_emu.features.settings.ui.SettingsActivity
@@ -118,6 +119,8 @@ class MainActivity :
         NativeLibrary.initMultiplayer()
 
         VrMainActivityUtils.doVersionUpdates(applicationContext)
+        // Restart the ROM upload server if the user left it enabled.
+        RomServerService.applyEnabledState(applicationContext)
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)

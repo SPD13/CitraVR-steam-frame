@@ -915,6 +915,16 @@
     <string name="vr_error_two_instances_title">Error: Detected Two CitraVR Instances</string>
     <string name="vr_error_two_instances_message">Detected a fatal launch bug with CitraVR.  This is a known issue. \n\nThe problem is now resolved.   Please try launching the game again. </string>
     <string name="vr_extra_performance_mode">VR Extra Performance Mode</string>
+    <string name="rom_server_title">ROM upload server</string>
+    <string name="rom_server_enabled">Enable ROM upload server</string>
+    <string name="rom_server_enabled_description">Serves a web page for adding and deleting ROMs in your games folder from a computer on the same network. Keeps running in the background until turned off.</string>
+    <string name="rom_server_address">Server address</string>
+    <string name="rom_server_address_description">Open this address in a browser on a computer on the same network. Tap to refresh.</string>
+    <string name="rom_server_off">Off</string>
+    <string name="rom_server_starting">Starting…</string>
+    <string name="rom_server_no_network">Running, but no network address was found. Check that Wi-Fi is connected.</string>
+    <string name="rom_server_failed">Could not start: %1$s</string>
+    <string name="rom_server_notification_title">ROM upload server running</string>
     <string name="vr_cpu_level">CPU level</string>
     <string name="vr_cpu_level_description">Higher levels may improve audio/emulation performance, but will drain the battery faster</string>
     <string name="vr_immersive_mode_title">[WARNING: Graphics Artifacts] Immersive Mode (Experimental)</string>

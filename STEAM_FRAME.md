@@ -67,6 +67,20 @@ Turn on Developer Mode on the Frame first (Steam Settings → Developer).
 
 Third-party tools such as [FrameLoad](https://github.com/Crypto90/frameload) and [FrameDrop](https://steamdeckhq.com/news/framedrop-sideloader-announced/) add an APK to the Steam library. To do it by hand from desktop mode, add the APK as a non-Steam game, then in its Properties → Compatibility, force the **Lepton** compatibility tool. Put an empty file named `lepton-show-flatscreen` next to the APK. Without it, SteamVR does not show CitraVR's 2D game list.
 
+### Adding ROMs from a computer (ROM upload server)
+
+CitraVR (any headset) can serve a web page for managing ROMs in the games folder:
+
+1. In CitraVR's 2D settings, open **VR → ROM upload server** and turn on **Enable ROM upload server**.
+2. **Server address** shows a URL such as `http://192.168.1.42:8080/k3m9xq2a/`. Open it in a browser on a computer on the same network.
+3. The page lists the ROMs in the games folder (and subfolders up to 3 levels deep), with their sizes and the free space. Delete ROMs from there, or drop new ones onto the page. Uploads go to the top of the games folder, and the game list refreshes when each one finishes.
+
+Notes:
+- The last part of the URL is a random key generated once per install. Without it the server answers "Not found", so only people who can see the address can use it. Traffic is plain HTTP, so use it on a trusted network only.
+- The server keeps running in the background, with an ongoing notification, until you turn it off. It restarts with the app if left on.
+- Only playable ROM types are accepted (`.3ds`, `.cci`, `.cxi`, `.3dsx`, `.app`, `.axf`, `.elf`, and their `z` compressed variants). Large files are streamed straight into the folder with no size limit beyond free space.
+- **Steam Frame:** not yet confirmed. Lepton runs Android in a container, and the address shown may be the container's internal address rather than the headset's. If the page doesn't load, try the headset's own IP with the same port and key. If that fails too, forward the port from the headset, for example `ssh -L 8080:<address shown>:8080 <user>@frame`, then open `http://localhost:8080/<key>/` on the computer.
+
 Note: Lepton has been reported to reset a container's data after an APK update. Back up your saves (`/sdcard/citra-emu` or the user folder you picked) before updating.
 
 ## Debugging

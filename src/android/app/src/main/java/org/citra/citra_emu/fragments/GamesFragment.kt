@@ -35,6 +35,7 @@ import org.citra.citra_emu.NativeLibrary
 import org.citra.citra_emu.R
 import org.citra.citra_emu.adapters.GameAdapter
 import org.citra.citra_emu.databinding.FragmentGamesBinding
+import org.citra.citra_emu.features.romserver.RomServer
 import org.citra.citra_emu.features.settings.model.BooleanSetting
 import org.citra.citra_emu.features.settings.model.IntSetting
 import org.citra.citra_emu.features.settings.model.Settings
@@ -218,6 +219,18 @@ class GamesFragment : Fragment() {
                         if (it) {
                             setAdapter(gamesViewModel.games.value)
                             gamesViewModel.setShouldSwapData(false)
+                        }
+                    }
+                }
+            }
+            launch {
+                // Reload when ROMs are uploaded or deleted through the ROM upload server.
+                var lastLibraryChange = RomServer.libraryChanges.value
+                repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                    RomServer.libraryChanges.collect {
+                        if (it != lastLibraryChange) {
+                            lastLibraryChange = it
+                            gamesViewModel.reloadGames(false)
                         }
                     }
                 }
