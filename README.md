@@ -9,6 +9,7 @@
 </h4>
 
 <p align="center">
+  <a href="#steam-frame-edition">Steam Frame Edition</a> |
   <a href="#compatabillty">Compatibillty</a> |
   <a href="#releases">Releases</a> |
   <a href="#known-issues">Known Issues</a> |
@@ -19,6 +20,56 @@
   <a href="#support">Support</a> |
   <a href="#license">License</a>
 </p>
+
+> **This is a fork of [amwatson/CitraVR](https://github.com/amwatson/CitraVR), focused on making CitraVR run on the Valve Steam Frame.** It keeps Quest support and adds a Steam Frame edition, installed into the Frame's Steam library as **Citra VR - Steam Frame Edition**. See the **[Steam Frame guide](STEAM_FRAME.md)** to build and install it. Quest releases come from the original repository.
+
+## Steam Frame Edition
+
+**The primary goal of this fork is Steam Frame compatibility.** The Frame runs Android apps through **Lepton**, Valve's Android container on SteamOS, with **SteamVR** as the OpenXR runtime. Stock CitraVR doesn't start there, because it depends on Meta-only OpenXR extensions that SteamVR doesn't offer. This fork makes those optional, replaces the ones CitraVR can't do without, and adds what's needed to use CitraVR comfortably on the Frame.
+
+**Status: experimental, running on a Steam Frame.** It has been tested with SteamVR/OpenXR 2.18.2 and Lepton (Android 11):
+- the app installs into the Steam library;
+- games boot in VR, with the Frame controllers;
+- the in-game menu and the in-VR game list work;
+- the ROM upload server is reachable from the network.
+
+Passthrough and the immersive modes haven't been checked on the headset yet. The same APK still targets Quest.
+
+**Quick start (Steam Frame):** build the APK (`cd src/android && ./gradlew assembleRelease`), then run `./register-frame.sh` from the repository root. It installs the app into the headset's Steam library with its artwork. Details are in [STEAM_FRAME.md](STEAM_FRAME.md).
+
+### What this fork adds
+
+**Running on Steam Frame (SteamVR through Lepton)**
+- **OpenXR extensions:** only `XR_KHR_opengl_es_enable` is required. Every Meta/FB extension is used when the runtime offers it and skipped or replaced when it doesn't. That covers cylinder layers, image-layout flip, layer settings, passthrough, performance settings and metrics, and thread settings. `XR_KHR_android_create_instance` is passed when offered.
+- **Screens without surface-backed swapchains:** SteamVR doesn't offer `XR_KHR_android_surface_swapchain`. The game screens and all VR panels (menu bar, keyboard, error dialog) are instead drawn by Android into a `SurfaceTexture`, and each new frame is copied into a regular OpenXR swapchain (`vr/SurfaceSwapchain.cpp`). New frames are detected with a frame listener. Quest keeps its surface-backed swapchains.
+- **Passthrough:** without `XR_FB_passthrough`, the app uses the alpha-blend environment mode, with a transparent projection layer behind the panels.
+- **Steam Frame controllers:** native bindings through `XR_VALVE_frame_controller_interaction`. A/B/X/Y are on the right controller, the 3DS d-pad on the left d-pad, L/R on the bumpers (and grips), and the left **View** button toggles the menu. Action queries also follow the OpenXR spec strictly, which SteamVR requires and Quest didn't.
+- **Headset detection:** Lepton (model `Lepton`) is recognised as Steam Frame, with the Quest 3 default resolution (3×).
+- **Menu bar fix:** upstream's secondary-display feature drew the lower game screen over CitraVR's own VR panel displays, which hid the menu bar and its *Close Game* button. Those displays are now excluded.
+
+**Switching games without leaving VR (Steam Frame)**
+- **The list:** on the Frame, *Close Game* no longer drops you into the Steam interface. It pauses the game and shows a **Choose a game** panel in VR, with your games and their icons.
+- **Picking a game** restarts the VR part of the app on it, in about a second.
+- **Back to game** resumes the current game; **CitraVR window** returns to the 2D app.
+
+**ROM upload server (all headsets)**
+- **The switch** is in *Settings → VR → ROM upload server*. The server runs in the background (foreground service) until turned off, and restarts with the app if left on.
+- **The page** at `http://<headset IP>:8338` lists the ROMs in the games folder with their sizes and the free space. You can delete ROMs and upload new ones by drag and drop, with progress shown.
+- **Uploads** stream straight into the games folder, so any size works. The game list refreshes by itself. The settings show the address to open.
+
+**Steam library integration (Steam Frame)**
+- **`register-frame.sh`** registers the APK with the Frame's Steam client as a title on the Lepton runtime, as Valve's devkit Title Upload does. It names it **Citra VR - Steam Frame Edition**, shows the 2D game list window, and installs library artwork. `--uninstall` removes it.
+- **Library artwork:** capsule, wide capsule, hero banner, logo and icon, generated from the CitraVR logo by `steam-frame/make_library_art.py`.
+
+**Development**
+- **CI builds:** a GitHub Actions workflow builds the APK on every push.
+- **Panel dumps:** `adb shell setprop debug.citra.dump_swapchains 1` saves what the app sends to the runtime for each VR panel, which helps debug visuals without wearing the headset.
+- **[STEAM_FRAME.md](STEAM_FRAME.md):** technical notes, install guide, testing checklist and known limitations.
+
+**Known limitations on Steam Frame:**
+- The curved screen and immersive modes fall back to the flat screen (no cylinder layers in SteamVR).
+- There's no CPU/GPU clock control and no performance overlay.
+- The library title keeps its own Android data, separate from Lepton Development.
 
 ## Introduction
 I originally created this project to a be a proof-of-concept of some techniques XR developers were curious about. 
