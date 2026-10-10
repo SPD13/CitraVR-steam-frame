@@ -10,10 +10,11 @@ Content     :   A swapchain whose contents are drawn by Android through an
                 this is a surface-backed swapchain, as on Quest: Android draws
                 straight into the swapchain and there is nothing to do per frame.
 
-                Runtimes without them (SteamVR on Steam Frame, via Lepton) get an
-                ordinary swapchain fed from a SurfaceTexture: Android draws into
+                Runtimes without them (SteamVR on Steam Frame, via Lepton) get
+                ordinary swapchains fed from a SurfaceTexture: Android draws into
                 the SurfaceTexture, and Update() copies each new frame into the
-                swapchain with a full-screen draw.
+                swapchain of the whole surface and/or into the swapchains of
+                regions of it.
 
 Authors     :   CitraVR contributors
 License     :   Licensed under GPLv3 or any later version.
@@ -33,22 +34,33 @@ License     :   Licensed under GPLv3 or any later version.
 
 class SurfaceSwapchain {
 public:
-    /** Creates the swapchain and the surface Android draws into. Must be called
-     *  on the thread that owns the EGL context used by the XrSession.
+    /** Whether surfaces are copied into ordinary swapchains (the SurfaceTexture
+     *  path), which is what makes regions available. Valid once the OpenXR
+     *  instance exists.
+     */
+    static bool UsesCopies();
+
+    /** Creates the surface Android draws into and, unless told otherwise, the
+     *  swapchain of the whole surface. Must be called on the thread that owns
+     *  the EGL context used by the XrSession.
      *
      *  @param session a valid XrSession
      *  @param env the JNI environment of the calling thread
      *  @param activityObject the VR activity, used to find the app's Java classes
-     *  @param width width of the swapchain (and surface) in pixels
-     *  @param height height of the swapchain (and surface) in pixels
+     *  @param width width of the surface (and its swapchain) in pixels
+     *  @param height height of the surface (and its swapchain) in pixels
+     *  @param withWholeSurfaceSwapchain false to only copy regions (AddRegion());
+     *         ignored, and always true, for surface-backed swapchains
      */
     SurfaceSwapchain(const XrSession& session, JNIEnv* env, jobject activityObject,
-                     const uint32_t width, const uint32_t height);
+                     const uint32_t width, const uint32_t height,
+                     const bool withWholeSurfaceSwapchain = true);
     ~SurfaceSwapchain();
 
     SurfaceSwapchain(const SurfaceSwapchain&) = delete;
     SurfaceSwapchain& operator=(const SurfaceSwapchain&) = delete;
 
+    /** The swapchain of the whole surface (none if created without it). */
     const Swapchain& GetSwapchain() const {
         return mMain.mSwapchain;
     }
@@ -58,49 +70,45 @@ public:
         return mSurface;
     }
 
-    /** Copies the latest frame Android produced into the swapchain, if there is
+    /** Copies the latest frame Android produced into the swapchains, if there is
      *  a new one. No-op for surface-backed swapchains. Call once per frame, on
      *  the thread that created this object, before xrEndFrame().
      */
     void Update();
 
-    /** The `next` chain for a layer that samples this swapchain. */
+    /** The `next` chain for a layer that samples these swapchains. */
     const void* GetLayerNext() const;
 
     /** Converts a rectangle in Android surface coordinates (origin at the top
-     *  left, y down) to the image rect of this swapchain.
+     *  left, y down) to the image rect of the whole surface's swapchain.
      */
     XrRect2Di ToImageRect(const int32_t x, const int32_t y, const int32_t width,
                           const int32_t height) const;
 
-    /** Adds a second, smaller swapchain that Update() fills with a filtered
-     *  downscale of a region of the surface, for a panel shown much smaller than
-     *  its texels. Swapchains have a single mip level (SteamVR on Steam Frame
-     *  shows the smaller levels of shared images as garbage), so a panel the
-     *  compositor has to shrink a lot shimmers; this does the shrinking here,
-     *  with a proper filter. SurfaceTexture path only.
+    /** Adds a swapchain that Update() fills with a region of the surface, scaled
+     *  to the swapchain's size (with a box filter when shrinking). Lets a panel
+     *  that shows part of the surface get a swapchain of its own size: smaller
+     *  than its texels, so the compositor doesn't shrink (and shimmer) it, or
+     *  smaller than the whole surface, see GameSurfaceLayer. SurfaceTexture
+     *  path only.
      *
      *  @param x, y, width, height the region, in Android surface coordinates
      *  @param outputWidth, outputHeight the size of the region's swapchain
-     *  @return false (and nothing is added) for surface-backed swapchains
+     *  @return the region's index, or -1 (and nothing is added) for
+     *          surface-backed swapchains
      */
-    bool AddDownscaledRegion(const int32_t x, const int32_t y, const int32_t width,
-                             const int32_t height, const uint32_t outputWidth,
-                             const uint32_t outputHeight);
+    int AddRegion(const int32_t x, const int32_t y, const int32_t width, const int32_t height,
+                  const uint32_t outputWidth, const uint32_t outputHeight);
 
-    bool HasDownscaledRegion() const {
-        return mRegion.mSwapchain.mHandle != XR_NULL_HANDLE;
+    const Swapchain& GetRegionSwapchain(const int region) const {
+        return mRegions[region].mSwapchain;
     }
 
-    const Swapchain& GetDownscaledRegionSwapchain() const {
-        return mRegion.mSwapchain;
-    }
-
-    /** Like ToImageRect(), for the downscaled region's swapchain. The rectangle
-     *  is in Android surface coordinates and should lie within the region.
+    /** Like ToImageRect(), for a region's swapchain. The rectangle is in Android
+     *  surface coordinates and should lie within the region.
      */
-    XrRect2Di ToDownscaledRegionImageRect(const int32_t x, const int32_t y, const int32_t width,
-                                          const int32_t height) const;
+    XrRect2Di ToRegionImageRect(const int region, const int32_t x, const int32_t y,
+                                const int32_t width, const int32_t height) const;
 
 private:
     // A swapchain filled by drawing the SurfaceTexture (or a region of it) into it.
@@ -114,7 +122,8 @@ private:
     };
 
     void CreateAndroidSurfaceSwapchain(const XrSession& session);
-    void CreateSurfaceTextureSwapchain(const XrSession& session, jobject activityObject);
+    void CreateSurfaceTextureSwapchain(const XrSession& session, jobject activityObject,
+                                       const bool withWholeSurfaceSwapchain);
     void CreateCopyResources();
     void CreateCopyTarget(const XrSession& session, const uint32_t width, const uint32_t height,
                           const XrRect2Di& sourceRect, CopyTarget& target);
@@ -128,6 +137,9 @@ private:
     JNIEnv* mEnv = nullptr;
     XrSession mSession = XR_NULL_HANDLE;
     jobject mSurface = nullptr;
+    // Size of the surface (and of the whole surface's swapchain, if any).
+    uint32_t mSurfaceWidth = 0;
+    uint32_t mSurfaceHeight = 0;
 
     //============================
     // SurfaceTexture path only.
@@ -148,10 +160,10 @@ private:
     bool mIsSrgbSwapchain = false;
     int64_t mSwapchainFormat = 0;
 
-    // The whole surface (the only swapchain on the surface-backed path), and the
-    // optional downscaled region.
+    // The whole surface (the only swapchain on the surface-backed path; no
+    // swapchain if created without it), and the regions.
     CopyTarget mMain;
-    CopyTarget mRegion;
+    std::vector<CopyTarget> mRegions;
 
     GLuint mExternalTexture = 0;
     GLuint mProgram = 0;

@@ -159,21 +159,26 @@ int64_t ChooseSwapchainFormat(const XrSession& session) {
 
 } // anonymous namespace
 
+bool SurfaceSwapchain::UsesCopies() {
+    return !(OpenXr::GetExtensions().mAndroidSurfaceSwapchain &&
+             OpenXr::GetExtensions().mCompositionLayerImageLayout);
+}
+
 SurfaceSwapchain::SurfaceSwapchain(const XrSession& session, JNIEnv* env, jobject activityObject,
-                                   const uint32_t width, const uint32_t height)
-    : mIsAndroidSurfaceSwapchain(OpenXr::GetExtensions().mAndroidSurfaceSwapchain &&
-                                 OpenXr::GetExtensions().mCompositionLayerImageLayout),
-      mEnv(env), mSession(session) {
-    mMain.mSwapchain.mWidth = width;
-    mMain.mSwapchain.mHeight = height;
+                                   const uint32_t width, const uint32_t height,
+                                   const bool withWholeSurfaceSwapchain)
+    : mIsAndroidSurfaceSwapchain(!UsesCopies()), mEnv(env), mSession(session),
+      mSurfaceWidth(width), mSurfaceHeight(height) {
     mMain.mSourceRect = {{0, 0}, {static_cast<int32_t>(width), static_cast<int32_t>(height)}};
     if (mIsAndroidSurfaceSwapchain) {
         CreateAndroidSurfaceSwapchain(session);
     } else {
-        CreateSurfaceTextureSwapchain(session, activityObject);
+        CreateSurfaceTextureSwapchain(session, activityObject, withWholeSurfaceSwapchain);
     }
-    ALOGI("SurfaceSwapchain: created {}x{} {} swapchain", width, height,
-          mIsAndroidSurfaceSwapchain ? "surface-backed" : "SurfaceTexture-fed");
+    ALOGI("SurfaceSwapchain: created {}x{} surface ({})", width, height,
+          mIsAndroidSurfaceSwapchain
+              ? "surface-backed swapchain"
+              : (withWholeSurfaceSwapchain ? "copied into a swapchain" : "copied into regions"));
 }
 
 SurfaceSwapchain::~SurfaceSwapchain() {
@@ -188,8 +193,8 @@ void SurfaceSwapchain::CreateAndroidSurfaceSwapchain(const XrSession& session) {
     xsci.usageFlags = XR_SWAPCHAIN_USAGE_SAMPLED_BIT | XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;
     xsci.format = 0;
     xsci.sampleCount = 0;
-    xsci.width = mMain.mSwapchain.mWidth;
-    xsci.height = mMain.mSwapchain.mHeight;
+    xsci.width = mSurfaceWidth;
+    xsci.height = mSurfaceHeight;
     xsci.faceCount = 0;
     xsci.arraySize = 0;
     // Note: you can't have mips when you render directly to a
@@ -208,15 +213,19 @@ void SurfaceSwapchain::CreateAndroidSurfaceSwapchain(const XrSession& session) {
     }
 
     OXR(pfnCreateSwapchainAndroidSurfaceKHR(session, &xsci, &mMain.mSwapchain.mHandle, &mSurface));
+    mMain.mSwapchain.mWidth = mSurfaceWidth;
+    mMain.mSwapchain.mHeight = mSurfaceHeight;
 }
 
 void SurfaceSwapchain::CreateSurfaceTextureSwapchain(const XrSession& session,
-                                                     jobject activityObject) {
+                                                     jobject activityObject,
+                                                     const bool withWholeSurfaceSwapchain) {
     mSwapchainFormat = ChooseSwapchainFormat(session);
     mIsSrgbSwapchain = (mSwapchainFormat == GL_SRGB8_ALPHA8);
     CreateCopyResources();
-    CreateCopyTarget(session, mMain.mSwapchain.mWidth, mMain.mSwapchain.mHeight,
-                     mMain.mSourceRect, mMain);
+    if (withWholeSurfaceSwapchain) {
+        CreateCopyTarget(session, mSurfaceWidth, mSurfaceHeight, mMain.mSourceRect, mMain);
+    }
 
     // SurfaceTexture and Surface. These are system classes, so FindClass() works
     // from this (non-main) thread.
@@ -236,8 +245,8 @@ void SurfaceSwapchain::CreateSurfaceTextureSwapchain(const XrSession& session,
                                                  static_cast<jint>(mExternalTexture));
         CheckJniException(mEnv, "new SurfaceTexture()");
         mEnv->CallVoidMethod(surfaceTexture, setDefaultBufferSizeMethodID,
-                             static_cast<jint>(mMain.mSwapchain.mWidth),
-                             static_cast<jint>(mMain.mSwapchain.mHeight));
+                             static_cast<jint>(mSurfaceWidth),
+                             static_cast<jint>(mSurfaceHeight));
         CheckJniException(mEnv, "SurfaceTexture.setDefaultBufferSize()");
         mSurfaceTexture = mEnv->NewGlobalRef(surfaceTexture);
 
@@ -327,9 +336,9 @@ void SurfaceSwapchain::CreateCopyTarget(const XrSession& session, const uint32_t
     xsci.height = height;
     xsci.faceCount = 1;
     xsci.arraySize = 1;
-    // A single level: SteamVR on Steam Frame accepts mip chains, but the compositor
-    // shows the smaller levels of these (shared) images as a grid of black pixels.
-    // Panels shown much smaller than their texels get a downscaled region instead.
+    // A single level: panels shown much smaller than their texels get a region of
+    // their own size instead (see AddRegion()), rather than a mip chain to
+    // regenerate on every copy.
     xsci.mipCount = 1;
     OXR(xrCreateSwapchain(session, &xsci, &target.mSwapchain.mHandle));
 
@@ -373,17 +382,18 @@ void SurfaceSwapchain::DestroyCopyTarget(CopyTarget& target) {
     target.mSwapchain.mHeight = 0;
 }
 
-bool SurfaceSwapchain::AddDownscaledRegion(const int32_t x, const int32_t y, const int32_t width,
-                                           const int32_t height, const uint32_t outputWidth,
-                                           const uint32_t outputHeight) {
+int SurfaceSwapchain::AddRegion(const int32_t x, const int32_t y, const int32_t width,
+                                const int32_t height, const uint32_t outputWidth,
+                                const uint32_t outputHeight) {
     if (mIsAndroidSurfaceSwapchain) {
-        return false;
+        return -1;
     }
-    assert(!HasDownscaledRegion());
-    CreateCopyTarget(mSession, outputWidth, outputHeight, {{x, y}, {width, height}}, mRegion);
-    ALOGI("SurfaceSwapchain: region {}x{}+{}+{} downscaled into a {}x{} swapchain", width, height,
-          x, y, outputWidth, outputHeight);
-    return true;
+    mRegions.emplace_back();
+    CreateCopyTarget(mSession, outputWidth, outputHeight, {{x, y}, {width, height}},
+                     mRegions.back());
+    ALOGI("SurfaceSwapchain: region {}x{}+{}+{} copied into a {}x{} swapchain", width, height, x,
+          y, outputWidth, outputHeight);
+    return static_cast<int>(mRegions.size()) - 1;
 }
 
 void SurfaceSwapchain::ClearSwapchainImage(CopyTarget& target) {
@@ -433,14 +443,16 @@ void SurfaceSwapchain::Update() {
     mEnv->CallVoidMethod(mSurfaceTexture, mGetTransformMatrixMethodID, mTransformMatrixArray);
     mEnv->GetFloatArrayRegion(mTransformMatrixArray, 0, 16, transformMatrix);
 
-    CopySurfaceTexture(mMain, transformMatrix);
-    if (HasDownscaledRegion()) {
-        CopySurfaceTexture(mRegion, transformMatrix);
+    if (mMain.mSwapchain.mHandle != XR_NULL_HANDLE) {
+        CopySurfaceTexture(mMain, transformMatrix);
+    }
+    for (CopyTarget& region : mRegions) {
+        CopySurfaceTexture(region, transformMatrix);
     }
     if (!mHasCopiedFrame) {
         mHasCopiedFrame = true;
-        ALOGI("SurfaceSwapchain: first frame copied into the {}x{} swapchain",
-              mMain.mSwapchain.mWidth, mMain.mSwapchain.mHeight);
+        ALOGI("SurfaceSwapchain: first frame of the {}x{} surface copied", mSurfaceWidth,
+              mSurfaceHeight);
     }
 }
 
@@ -461,8 +473,8 @@ void SurfaceSwapchain::CopySurfaceTexture(CopyTarget& target, const float transf
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 
     // The source region in surface coordinates (GL convention, origin at the bottom left).
-    const float surfaceWidth = static_cast<float>(mMain.mSwapchain.mWidth);
-    const float surfaceHeight = static_cast<float>(mMain.mSwapchain.mHeight);
+    const float surfaceWidth = static_cast<float>(mSurfaceWidth);
+    const float surfaceHeight = static_cast<float>(mSurfaceHeight);
     const XrRect2Di& source = target.mSourceRect;
     const float sourceX = static_cast<float>(source.offset.x) / surfaceWidth;
     const float sourceY =
@@ -540,22 +552,21 @@ XrRect2Di SurfaceSwapchain::ToImageRect(const int32_t x, const int32_t y, const 
         return XrRect2Di{{x, y}, {width, height}};
     }
     // The copy is upright in GL convention, where row 0 is the bottom row.
-    return XrRect2Di{{x, static_cast<int32_t>(mMain.mSwapchain.mHeight) - (y + height)},
-                     {width, height}};
+    return XrRect2Di{{x, static_cast<int32_t>(mSurfaceHeight) - (y + height)}, {width, height}};
 }
 
-XrRect2Di SurfaceSwapchain::ToDownscaledRegionImageRect(const int32_t x, const int32_t y,
-                                                        const int32_t width,
-                                                        const int32_t height) const {
-    const XrRect2Di& source = mRegion.mSourceRect;
-    const float scaleX = static_cast<float>(mRegion.mSwapchain.mWidth) / source.extent.width;
-    const float scaleY = static_cast<float>(mRegion.mSwapchain.mHeight) / source.extent.height;
+XrRect2Di SurfaceSwapchain::ToRegionImageRect(const int region, const int32_t x, const int32_t y,
+                                              const int32_t width, const int32_t height) const {
+    const CopyTarget& target = mRegions[region];
+    const XrRect2Di& source = target.mSourceRect;
+    const float scaleX = static_cast<float>(target.mSwapchain.mWidth) / source.extent.width;
+    const float scaleY = static_cast<float>(target.mSwapchain.mHeight) / source.extent.height;
     const int32_t left = std::lround((x - source.offset.x) * scaleX);
     const int32_t top = std::lround((y - source.offset.y) * scaleY);
     const int32_t right = std::lround((x + width - source.offset.x) * scaleX);
     const int32_t bottom = std::lround((y + height - source.offset.y) * scaleY);
     // The copy is upright in GL convention, where row 0 is the bottom row.
-    return XrRect2Di{{left, static_cast<int32_t>(mRegion.mSwapchain.mHeight) - bottom},
+    return XrRect2Di{{left, static_cast<int32_t>(target.mSwapchain.mHeight) - bottom},
                      {right - left, bottom - top}};
 }
 
@@ -589,7 +600,10 @@ void SurfaceSwapchain::Shutdown() {
         mEnv->ExceptionClear();
     }
 
-    DestroyCopyTarget(mRegion);
+    for (CopyTarget& region : mRegions) {
+        DestroyCopyTarget(region);
+    }
+    mRegions.clear();
     if (mIsAndroidSurfaceSwapchain) {
         if (mMain.mSwapchain.mHandle != XR_NULL_HANDLE) {
             xrDestroySwapchain(mMain.mSwapchain.mHandle);

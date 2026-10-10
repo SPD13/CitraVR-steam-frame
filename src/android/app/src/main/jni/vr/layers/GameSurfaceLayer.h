@@ -199,6 +199,13 @@ private:
      */
     void CreateSwapchain(const jobject activityObject);
 
+    /** The sub-image showing a rectangle of the surface (in Android surface
+     *  coordinates): from the given region's swapchain, or from the whole
+     *  surface's swapchain if the region is -1.
+     */
+    XrSwapchainSubImage GetSubImage(const int region, const int32_t x, const int32_t y,
+                                    const int32_t width, const int32_t height) const;
+
     static constexpr uint32_t SURFACE_WIDTH_UNSCALED =
         NUM_EYES * Core::kScreenTopWidth;
     static constexpr uint32_t SURFACE_HEIGHT_UNSCALED =
@@ -212,6 +219,10 @@ private:
 
     const XrSession mSession;
     std::unique_ptr<SurfaceSwapchain> mSurfaceSwapchain;
+    // Regions of the surface with swapchains of their own (-1: the panel samples
+    // the whole surface's swapchain). See CreateSwapchain().
+    int mTopRegion = -1;
+    int mLowerRegion = -1;
 
     // Density scale for surface. Citra's auto-scale sets this as the internal
     // resolution.
