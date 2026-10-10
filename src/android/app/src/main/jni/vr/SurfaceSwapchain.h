@@ -50,7 +50,7 @@ public:
     SurfaceSwapchain& operator=(const SurfaceSwapchain&) = delete;
 
     const Swapchain& GetSwapchain() const {
-        return mSwapchain;
+        return mMain.mSwapchain;
     }
 
     /** The android.view.Surface Android should draw into. */
@@ -73,19 +73,60 @@ public:
     XrRect2Di ToImageRect(const int32_t x, const int32_t y, const int32_t width,
                           const int32_t height) const;
 
+    /** Adds a second, smaller swapchain that Update() fills with a filtered
+     *  downscale of a region of the surface, for a panel shown much smaller than
+     *  its texels. Swapchains have a single mip level (SteamVR on Steam Frame
+     *  shows the smaller levels of shared images as garbage), so a panel the
+     *  compositor has to shrink a lot shimmers; this does the shrinking here,
+     *  with a proper filter. SurfaceTexture path only.
+     *
+     *  @param x, y, width, height the region, in Android surface coordinates
+     *  @param outputWidth, outputHeight the size of the region's swapchain
+     *  @return false (and nothing is added) for surface-backed swapchains
+     */
+    bool AddDownscaledRegion(const int32_t x, const int32_t y, const int32_t width,
+                             const int32_t height, const uint32_t outputWidth,
+                             const uint32_t outputHeight);
+
+    bool HasDownscaledRegion() const {
+        return mRegion.mSwapchain.mHandle != XR_NULL_HANDLE;
+    }
+
+    const Swapchain& GetDownscaledRegionSwapchain() const {
+        return mRegion.mSwapchain;
+    }
+
+    /** Like ToImageRect(), for the downscaled region's swapchain. The rectangle
+     *  is in Android surface coordinates and should lie within the region.
+     */
+    XrRect2Di ToDownscaledRegionImageRect(const int32_t x, const int32_t y, const int32_t width,
+                                          const int32_t height) const;
+
 private:
+    // A swapchain filled by drawing the SurfaceTexture (or a region of it) into it.
+    struct CopyTarget {
+        Swapchain mSwapchain{XR_NULL_HANDLE, 0, 0};
+        std::vector<XrSwapchainImageOpenGLESKHR> mImages;
+        std::vector<GLuint> mFramebuffers;
+        // The part of the surface copied, in Android surface coordinates.
+        XrRect2Di mSourceRect{};
+        std::chrono::steady_clock::time_point mLastDumpTime{};
+    };
+
     void CreateAndroidSurfaceSwapchain(const XrSession& session);
     void CreateSurfaceTextureSwapchain(const XrSession& session, jobject activityObject);
     void CreateCopyResources();
-    void ClearSwapchainImage();
-    void CopySurfaceTextureToSwapchain(const float transformMatrix[16]);
-    void DumpBoundFramebufferIfRequested(const float transformMatrix[16]);
-    void GenerateMipmaps(const uint32_t imageIndex);
+    void CreateCopyTarget(const XrSession& session, const uint32_t width, const uint32_t height,
+                          const XrRect2Di& sourceRect, CopyTarget& target);
+    void DestroyCopyTarget(CopyTarget& target);
+    void ClearSwapchainImage(CopyTarget& target);
+    void CopySurfaceTexture(CopyTarget& target, const float transformMatrix[16]);
+    void DumpBoundFramebufferIfRequested(CopyTarget& target, const float transformMatrix[16]);
     void Shutdown();
 
     const bool mIsAndroidSurfaceSwapchain;
     JNIEnv* mEnv = nullptr;
-    Swapchain mSwapchain{XR_NULL_HANDLE, 0, 0};
+    XrSession mSession = XR_NULL_HANDLE;
     jobject mSurface = nullptr;
 
     //============================
@@ -100,21 +141,26 @@ private:
     // Frames latched with updateTexImage(), compared against the listener's count.
     jlong mLatchedFrameCount = 0;
     bool mHasCopiedFrame = false;
-    std::chrono::steady_clock::time_point mLastDumpTime{};
 
-    // Whether the swapchain stores sRGB-encoded values, in which case the copy
+    // Whether the swapchains store sRGB-encoded values, in which case the copy
     // decodes the (sRGB-encoded) Android content to linear and the GPU encodes it
     // back on write.
     bool mIsSrgbSwapchain = false;
-    // Mip levels of the swapchain images (1 if the runtime refused more).
-    uint32_t mMipLevels = 1;
+    int64_t mSwapchainFormat = 0;
 
-    std::vector<XrSwapchainImageOpenGLESKHR> mSwapchainImages;
-    std::vector<GLuint> mFramebuffers;
+    // The whole surface (the only swapchain on the surface-backed path), and the
+    // optional downscaled region.
+    CopyTarget mMain;
+    CopyTarget mRegion;
+
     GLuint mExternalTexture = 0;
     GLuint mProgram = 0;
     GLint mTexMatrixUniform = -1;
     GLint mDecodeSrgbUniform = -1;
+    GLint mSourceOffsetUniform = -1;
+    GLint mSourceScaleUniform = -1;
+    GLint mTapsPerAxisUniform = -1;
+    GLint mTapStepUniform = -1;
     GLuint mVertexArray = 0;
     GLuint mVertexBuffer = 0;
 };

@@ -386,13 +386,19 @@ void GameSurfaceLayer::FrameLowerPanel(const XrSpace&                   space,
 
     layer.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
     memset(&layer.subImage, 0, sizeof(XrSwapchainSubImage));
-    layer.subImage.swapchain = mSurfaceSwapchain->GetSwapchain().mHandle;
-    layer.subImage.imageRect = mSurfaceSwapchain->ToImageRect(
-        mLowerPanel.mWidth * (0.5f - (0.5f / immersiveModeFactor)),
-        mLowerPanel.mHeight + verticalBorderTex +
-            mLowerPanel.mHeight * (0.5f - (0.5f / immersiveModeFactor)),
-        mLowerPanel.mWidth / immersiveModeFactor,
-        mLowerPanel.mHeight / immersiveModeFactor - verticalBorderTex);
+    const int32_t x = mLowerPanel.mWidth * (0.5f - (0.5f / immersiveModeFactor));
+    const int32_t y = mLowerPanel.mHeight + verticalBorderTex +
+                      mLowerPanel.mHeight * (0.5f - (0.5f / immersiveModeFactor));
+    const int32_t width = mLowerPanel.mWidth / immersiveModeFactor;
+    const int32_t height = mLowerPanel.mHeight / immersiveModeFactor - verticalBorderTex;
+    if (mSurfaceSwapchain->HasDownscaledRegion()) {
+        layer.subImage.swapchain = mSurfaceSwapchain->GetDownscaledRegionSwapchain().mHandle;
+        layer.subImage.imageRect =
+            mSurfaceSwapchain->ToDownscaledRegionImageRect(x, y, width, height);
+    } else {
+        layer.subImage.swapchain = mSurfaceSwapchain->GetSwapchain().mHandle;
+        layer.subImage.imageRect = mSurfaceSwapchain->ToImageRect(x, y, width, height);
+    }
     layer.subImage.imageArrayIndex = 0;
     layer.pose                             = mLowerPanel.mWorldFromPanel;
     const auto scale = GetDensityScaleFor3dsScreen(Core::kScreenBottomWidth,
@@ -513,6 +519,21 @@ void GameSurfaceLayer::CreateSwapchain(const jobject activityObject) {
 
     mSurfaceSwapchain = std::make_unique<SurfaceSwapchain>(mSession, mEnv, activityObject, width, height);
     mSurface = mSurfaceSwapchain->GetSurface();
+
+    // The lower panel is shown much smaller than its texels (about 560 px across
+    // for 960 texels at 3x), which makes fine detail shimmer as the head moves.
+    // Where the swapchain is a copy (Steam Frame), give it its own swapchain with
+    // a filtered downscale to twice the 3DS resolution, so the compositor barely
+    // shrinks it. The region skips the row bordering the top panel.
+    constexpr uint32_t kLowerPanelOversampling = 2;
+    const uint32_t lowerWidth = Core::kScreenBottomWidth * mResolutionFactor;
+    const uint32_t lowerHeight = height / 2;
+    if (mResolutionFactor > kLowerPanelOversampling) {
+        mSurfaceSwapchain->AddDownscaledRegion(
+            0, lowerHeight + 1, lowerWidth, lowerHeight - 1,
+            Core::kScreenBottomWidth * kLowerPanelOversampling,
+            Core::kScreenBottomHeight * kLowerPanelOversampling);
+    }
 }
 
 void GameSurfaceLayer::SetLowerPanelWithPose(const XrPosef& pose) {
