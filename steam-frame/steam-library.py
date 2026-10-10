@@ -4,7 +4,7 @@ Steam client's CEF DevTools port (127.0.0.1:8080, page SharedJSContext), without
 Steam. A devkit title is always registered as "Devkit Game: <gameid>"; this renames it.
 The DevTools client is the one in stream-frame's lib/steam-shortcut.py. Stdlib only.
 
-  steam-library.py --gameid citravr --name "CitraVR" [--artwork-dir DIR]
+  steam-library.py --gameid citravr --name "Citra VR - Steam Frame Edition" [--artwork-dir DIR]
 
 Shared with the Time Crisis VR Steam Frame port.
 

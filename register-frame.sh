@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Add CitraVR to the Steam Frame's Steam library (Non-Steam > CitraVR), launched through
+# Add CitraVR to the Steam Frame's Steam library (Non-Steam > Citra VR - Steam Frame Edition), launched through
 # Lepton like a Title Upload with runtime "Android". Needs Developer Mode and ssh access as
 # steamos (your key paired with the Frame, or its Developer Mode password).
 # FRAME_HOST (default: frame.local) selects the headset.
@@ -33,5 +33,5 @@ fi
 # through the Steam client (the grid files above keep the artwork if this is unavailable).
 scp -q steam-frame/steam-library.py "$target:$remote_dir/steam-library.py"
 art=(); [[ -d steam-frame/library-art ]] && art=(--artwork-dir "~/$remote_dir/library-art")
-ssh "$target" "python3 ~/$remote_dir/steam-library.py --gameid $gameid --name 'CitraVR' ${art[*]}" \
+ssh "$target" "python3 ~/$remote_dir/steam-library.py --gameid $gameid --name 'Citra VR - Steam Frame Edition' ${art[*]}" \
   || echo "note: Steam's client did not answer; the title keeps the name 'Devkit Game: $gameid'"

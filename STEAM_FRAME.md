@@ -64,7 +64,7 @@ Turn on Developer Mode on the Frame first (Steam Settings → Developer).
 
 ### Into the Steam library (recommended)
 
-`register-frame.sh` installs CitraVR as a library title, **Library → Non-Steam → CitraVR**, with its own artwork, launched through Lepton like any other game. It does what Valve's SteamOS Devkit Client **Title Upload** does with runtime **Android**. It needs:
+`register-frame.sh` installs CitraVR as a library title, **Library → Non-Steam → Citra VR - Steam Frame Edition**, with its own artwork, launched through Lepton like any other game. It does what Valve's SteamOS Devkit Client **Title Upload** does with runtime **Android**. It needs:
 - **Developer Mode** on the Frame (Steam Settings → System), with a user password.
 - **ssh access** as `steamos`. Copy your key once with `ssh-copy-id steamos@frame.local`.
 - **Steam running** on the headset (it always is while the headset is on).
@@ -80,12 +80,12 @@ FRAME_HOST=192.168.1.42 ./register-frame.sh # if frame.local does not resolve
 It prints one line per step:
 1. **Register:** copies the APK to `~/devkit-game/citravr/` on the headset and registers it with Steam as a devkit title on the Lepton runtime. It also adds the `lepton-show-flatscreen` file, so the 2D game list is shown.
 2. **Artwork:** installs the images in `steam-frame/library-art/` into Steam's artwork folder.
-3. **Name:** renames the entry from "Devkit Game: citravr" to **CitraVR** and applies the artwork through the Steam client, without restarting it.
+3. **Name:** renames the entry from "Devkit Game: citravr" to **Citra VR - Steam Frame Edition** and applies the artwork through the Steam client, without restarting it.
 
 ```text
 registered as Devkit Game: citravr (Android runtime, Lepton)
 Devkit Game: citravr: artwork installed for appid … in …/config/grid
-steam-library: app id … is now 'CitraVR', 4 artwork images set
+steam-library: app id … is now 'Citra VR - Steam Frame Edition', 4 artwork images set
 ```
 
 Run it again after each build to update. Your data is kept. `./register-frame.sh --uninstall` removes the entry, its artwork and the files on the headset.
