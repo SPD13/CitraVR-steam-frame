@@ -185,6 +185,23 @@ object RomServer {
                     route(request, output)
                 } catch (e: HttpError) {
                     sendJson(output, e.status, JSONObject().put("error", e.message))
+                } catch (e: SecurityException) {
+                    // Android revoked CitraVR's access to the games folder (on Steam
+                    // Frame this happens when the app is updated).
+                    Log.warning("[RomServer] No access to the games folder: ${e.message}")
+                    sendJson(
+                        output,
+                        403,
+                        JSONObject().put(
+                            "error",
+                            "CitraVR has lost access to the games folder. In CitraVR, open " +
+                                "Options > Select Games Folder and select it again."
+                        )
+                    )
+                } catch (e: Exception) {
+                    // Always answer, so the page can show what went wrong.
+                    Log.warning("[RomServer] Request failed: $e")
+                    sendJson(output, 500, JSONObject().put("error", e.message ?: e.toString()))
                 }
             } catch (e: Exception) {
                 Log.warning("[RomServer] Request failed: ${e.message}")
@@ -268,6 +285,7 @@ object RomServer {
         val reason = when (status) {
             200 -> "OK"
             400 -> "Bad Request"
+            403 -> "Forbidden"
             404 -> "Not Found"
             409 -> "Conflict"
             411 -> "Length Required"
