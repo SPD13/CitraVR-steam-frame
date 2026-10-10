@@ -80,6 +80,7 @@ private:
     void ClearSwapchainImage();
     void CopySurfaceTextureToSwapchain(const float transformMatrix[16]);
     void DumpBoundFramebufferIfRequested(const float transformMatrix[16]);
+    void GenerateMipmaps(const uint32_t imageIndex);
     void Shutdown();
 
     const bool mIsAndroidSurfaceSwapchain;
@@ -105,6 +106,8 @@ private:
     // decodes the (sRGB-encoded) Android content to linear and the GPU encodes it
     // back on write.
     bool mIsSrgbSwapchain = false;
+    // Mip levels of the swapchain images (1 if the runtime refused more).
+    uint32_t mMipLevels = 1;
 
     std::vector<XrSwapchainImageOpenGLESKHR> mSwapchainImages;
     std::vector<GLuint> mFramebuffers;

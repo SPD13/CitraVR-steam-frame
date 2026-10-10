@@ -148,8 +148,8 @@ SurfaceSwapchain::SurfaceSwapchain(const XrSession& session, JNIEnv* env, jobjec
     } else {
         CreateSurfaceTextureSwapchain(session, activityObject);
     }
-    ALOGI("SurfaceSwapchain: created {}x{} {} swapchain", width, height,
-          mIsAndroidSurfaceSwapchain ? "surface-backed" : "SurfaceTexture-fed");
+    ALOGI("SurfaceSwapchain: created {}x{} {} swapchain ({} mip levels)", width, height,
+          mIsAndroidSurfaceSwapchain ? "surface-backed" : "SurfaceTexture-fed", mMipLevels);
 }
 
 SurfaceSwapchain::~SurfaceSwapchain() {
@@ -203,8 +203,22 @@ void SurfaceSwapchain::CreateSurfaceTextureSwapchain(const XrSession& session,
         xsci.height = mSwapchain.mHeight;
         xsci.faceCount = 1;
         xsci.arraySize = 1;
-        xsci.mipCount = 1;
-        OXR(xrCreateSwapchain(session, &xsci, &mSwapchain.mHandle));
+        // A full mip chain, regenerated after each copy: the panels are shown smaller
+        // than their texel size, and without mips fine detail shimmers as the head
+        // moves. Fall back to a single level if the runtime refuses.
+        mMipLevels = 1;
+        for (uint32_t size = std::max(mSwapchain.mWidth, mSwapchain.mHeight); size > 1;
+             size /= 2) {
+            mMipLevels++;
+        }
+        xsci.mipCount = mMipLevels;
+        if (XR_FAILED(xrCreateSwapchain(session, &xsci, &mSwapchain.mHandle))) {
+            ALOGW("SurfaceSwapchain: {}x{} swapchain with {} mip levels refused, using 1",
+                  mSwapchain.mWidth, mSwapchain.mHeight, mMipLevels);
+            mMipLevels = 1;
+            xsci.mipCount = 1;
+            OXR(xrCreateSwapchain(session, &xsci, &mSwapchain.mHandle));
+        }
 
         uint32_t numImages = 0;
         OXR(xrEnumerateSwapchainImages(mSwapchain.mHandle, 0, &numImages, nullptr));
@@ -334,6 +348,7 @@ void SurfaceSwapchain::ClearSwapchainImage() {
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
     glClear(GL_COLOR_BUFFER_BIT);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    GenerateMipmaps(index);
 
     XrSwapchainImageReleaseInfo releaseInfo = {XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO, nullptr};
     OXR(xrReleaseSwapchainImage(mSwapchain.mHandle, &releaseInfo));
@@ -402,9 +417,19 @@ void SurfaceSwapchain::CopySurfaceTextureToSwapchain(const float transformMatrix
     glUseProgram(0);
     DumpBoundFramebufferIfRequested(transformMatrix);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    GenerateMipmaps(index);
 
     XrSwapchainImageReleaseInfo releaseInfo = {XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO, nullptr};
     OXR(xrReleaseSwapchainImage(mSwapchain.mHandle, &releaseInfo));
+}
+
+void SurfaceSwapchain::GenerateMipmaps(const uint32_t imageIndex) {
+    if (mMipLevels <= 1) {
+        return;
+    }
+    glBindTexture(GL_TEXTURE_2D, mSwapchainImages[imageIndex].image);
+    glGenerateMipmap(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 // Debugging aid: with `setprop debug.citra.dump_swapchains 1`, writes what was just
