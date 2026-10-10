@@ -67,6 +67,7 @@ import org.citra.citra_emu.utils.BuildUtil
 import org.citra.citra_emu.utils.CiaInstallWorker
 import org.citra.citra_emu.utils.CitraDirectoryHelper
 import org.citra.citra_emu.utils.CitraDirectoryUtils
+import org.citra.citra_emu.utils.CitraVrDirectories
 import org.citra.citra_emu.utils.DirectoryInitialization
 import org.citra.citra_emu.utils.FileBrowserHelper
 import org.citra.citra_emu.utils.InsetsHelper
@@ -372,12 +373,58 @@ class MainActivity :
             .getBoolean(Settings.PREF_FIRST_APP_LAUNCH, true)
 
         if (firstTimeSetup && !homeViewModel.navigatedToSetup) {
-            homeViewModel.setupCurrentPage = savedInstanceState?.getInt(KEY_SETUP_CURRENT_PAGE) ?: 0
-            navController.navigate(R.id.firstTimeSetupFragment)
             homeViewModel.navigatedToSetup = true
+            if (CitraVrDirectories.hasAllFilesAccess(this)) {
+                // Nothing to grant: one question instead of the setup wizard.
+                askToConfigureDirectoriesManually(savedInstanceState, navController)
+            } else {
+                homeViewModel.setupCurrentPage =
+                    savedInstanceState?.getInt(KEY_SETUP_CURRENT_PAGE) ?: 0
+                navController.navigate(R.id.firstTimeSetupFragment)
+            }
         } else {
             (binding.navigationView as NavigationBarView).setupWithNavController(navController)
         }
+    }
+
+    /**
+     * First launch with all-files access: either set CitraVR up with its default
+     * folders, without any further question, or run the setup wizard.
+     */
+    private fun askToConfigureDirectoriesManually(
+        savedInstanceState: Bundle?,
+        navController: NavController
+    ) {
+        fun runSetupWizard() {
+            homeViewModel.setupCurrentPage = savedInstanceState?.getInt(KEY_SETUP_CURRENT_PAGE) ?: 0
+            navController.navigate(R.id.firstTimeSetupFragment)
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.vr_setup_title)
+            .setMessage(
+                getString(
+                    R.string.vr_setup_message,
+                    CitraVrDirectories.defaultUserDirectory.path,
+                    CitraVrDirectories.defaultGamesDirectory.path
+                )
+            )
+            .setCancelable(false)
+            .setPositiveButton(R.string.vr_setup_use_defaults) { _, _ ->
+                if (!CitraVrDirectories.useDefaultDirectories(this)) {
+                    runSetupWizard()
+                    return@setPositiveButton
+                }
+                PreferenceManager.getDefaultSharedPreferences(applicationContext).edit()
+                    .putBoolean(Settings.PREF_FIRST_APP_LAUNCH, false)
+                    .apply()
+                settingsViewModel.settings.loadSettings()
+                homeViewModel.setUserDir(this, CitraVrDirectories.defaultUserDirectory.path)
+                homeViewModel.setGamesDir(this, CitraVrDirectories.defaultGamesDirectory.path)
+                (binding.navigationView as NavigationBarView).setupWithNavController(navController)
+                showVrNotice()
+            }
+            .setNeutralButton(R.string.vr_setup_configure_manually) { _, _ -> runSetupWizard() }
+            .show()
     }
 
     private fun showNavigation(visible: Boolean, animated: Boolean) {

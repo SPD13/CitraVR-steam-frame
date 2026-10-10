@@ -73,7 +73,7 @@ class SettingsActivityPresenter(private val activityView: SettingsActivityView) 
         try {
             dataDirTreeUri = PermissionsHandler.citraDirectory
             dataDirDocument =
-                DocumentFile.fromTreeUri(CitraApplication.appContext, dataDirTreeUri)!!
+                FileUtil.directoryDocument(CitraApplication.appContext, dataDirTreeUri)!!
             nomediaFileDocument = dataDirDocument.findFile(".nomedia")
             nomediaFileExists = (nomediaFileDocument != null)
         } catch (e: Exception) {

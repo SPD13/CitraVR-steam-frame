@@ -22,6 +22,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
@@ -360,6 +362,9 @@ object RomServer {
 
     private fun listFiles(): JSONObject {
         val treeUri = gamesTreeUri()
+        if (FileUtil.isFileUri(treeUri)) {
+            return listPlainFiles(plainGamesRoot(treeUri))
+        }
         val files = JSONArray()
         fun scan(documentId: String, relativeDir: String, depth: Int) {
             if (depth <= 0) {
@@ -419,6 +424,10 @@ object RomServer {
 
     private fun deleteFile(relativePath: String) {
         val treeUri = gamesTreeUri()
+        if (FileUtil.isFileUri(treeUri)) {
+            deletePlainFile(plainGamesRoot(treeUri), relativePath)
+            return
+        }
         val entry = findEntry(treeUri, relativePath)
         if (entry == null || entry.isDirectory || !isRom(entry.name)) {
             throw HttpError(404, "No ROM named $relativePath")
@@ -446,9 +455,13 @@ object RomServer {
             ?: throw HttpError(411, "Content-Length is required")
 
         val treeUri = gamesTreeUri()
+        val overwrite = request.query["overwrite"] == "1"
+        if (FileUtil.isFileUri(treeUri)) {
+            uploadPlainFile(plainGamesRoot(treeUri), name, length, overwrite, request, output)
+            return
+        }
         val rootId = rootDocumentId(treeUri)
         val existing = listChildren(treeUri, rootId)
-        val overwrite = request.query["overwrite"] == "1"
         existing.firstOrNull { it.name == name }?.let {
             if (!overwrite) {
                 throw HttpError(409, "$name already exists")
@@ -462,10 +475,7 @@ object RomServer {
             )
         }
 
-        if (request.headers["expect"]?.equals("100-continue", ignoreCase = true) == true) {
-            output.write("HTTP/1.1 100 Continue\r\n\r\n".toByteArray(Charsets.UTF_8))
-            output.flush()
-        }
+        sendContinueIfExpected(request, output)
 
         val rootUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, rootId)
         // Written under a temporary name, so the game list never shows half a ROM.
@@ -482,16 +492,7 @@ object RomServer {
                 if (fileOutput == null) {
                     throw HttpError(500, "Could not open $name for writing")
                 }
-                val buffer = ByteArray(COPY_BUFFER_BYTES)
-                var remaining = length
-                while (remaining > 0) {
-                    val read = request.body.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
-                    if (read < 0) {
-                        throw IOException("Connection closed after ${length - remaining} of $length bytes")
-                    }
-                    fileOutput.write(buffer, 0, read)
-                    remaining -= read
-                }
+                copyBody(request, length, fileOutput)
             }
             if (overwrite) {
                 listChildren(treeUri, rootId).firstOrNull { it.name == name }?.let {
@@ -508,6 +509,124 @@ object RomServer {
                 DocumentsContract.deleteDocument(appContext.contentResolver, partialUri)
             } catch (_: Exception) {
             }
+            throw e
+        } finally {
+            onTransferActive?.invoke(false)
+        }
+        Log.info("[RomServer] Uploaded $name ($length bytes)")
+        _libraryChanges.update { it + 1 }
+    }
+
+    private fun sendContinueIfExpected(request: Request, output: OutputStream) {
+        if (request.headers["expect"]?.equals("100-continue", ignoreCase = true) == true) {
+            output.write("HTTP/1.1 100 Continue\r\n\r\n".toByteArray(Charsets.UTF_8))
+            output.flush()
+        }
+    }
+
+    /** Streams exactly [length] bytes of the request body into [destination]. */
+    private fun copyBody(request: Request, length: Long, destination: OutputStream) {
+        val buffer = ByteArray(COPY_BUFFER_BYTES)
+        var remaining = length
+        while (remaining > 0) {
+            val read = request.body.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+            if (read < 0) {
+                throw IOException("Connection closed after ${length - remaining} of $length bytes")
+            }
+            destination.write(buffer, 0, read)
+            remaining -= read
+        }
+    }
+
+    //==================================================================================
+    // Games folder as a plain path (file://), used with all-files access
+
+    private fun plainGamesRoot(uri: Uri): File {
+        val root = File(uri.path ?: "")
+        if (!root.isDirectory) {
+            throw HttpError(409, "The games folder ${root.path} doesn't exist.")
+        }
+        return root
+    }
+
+    private fun listPlainFiles(root: File): JSONObject {
+        val files = JSONArray()
+        fun scan(directory: File, relativeDir: String, depth: Int) {
+            if (depth <= 0) {
+                return
+            }
+            directory.listFiles()?.sortedBy { it.name.lowercase() }?.forEach {
+                val relativePath = if (relativeDir.isEmpty()) it.name else "$relativeDir/${it.name}"
+                if (it.isDirectory) {
+                    scan(it, relativePath, depth - 1)
+                } else if (isRom(it.name)) {
+                    files.put(
+                        JSONObject()
+                            .put("path", relativePath)
+                            .put("size", it.length())
+                            .put("modified", it.lastModified())
+                    )
+                }
+            }
+        }
+        scan(root, "", MAX_SCAN_DEPTH)
+        return JSONObject()
+            .put("folder", root.name)
+            .put("freeBytes", root.usableSpace)
+            .put("extensions", JSONArray(Game.extensions.sorted()))
+            .put("files", files)
+    }
+
+    /** The file at [relativePath] inside [root], or null if the path leaves it. */
+    private fun plainFile(root: File, relativePath: String): File? {
+        val parts = relativePath.split('/').filter { it.isNotEmpty() }
+        if (parts.isEmpty() || parts.size > MAX_SCAN_DEPTH || parts.any { it == "." || it == ".." }) {
+            return null
+        }
+        val file = File(root, parts.joinToString("/"))
+        return if (file.canonicalPath.startsWith(root.canonicalPath + File.separator)) file else null
+    }
+
+    private fun deletePlainFile(root: File, relativePath: String) {
+        val file = plainFile(root, relativePath)
+        if (file == null || !file.isFile || !isRom(file.name)) {
+            throw HttpError(404, "No ROM named $relativePath")
+        }
+        if (!file.delete()) {
+            throw HttpError(500, "Could not delete $relativePath")
+        }
+        Log.info("[RomServer] Deleted $relativePath")
+        _libraryChanges.update { it + 1 }
+    }
+
+    private fun uploadPlainFile(
+        root: File,
+        name: String,
+        length: Long,
+        overwrite: Boolean,
+        request: Request,
+        output: OutputStream
+    ) {
+        val target = File(root, name)
+        if (target.exists() && !overwrite) {
+            throw HttpError(409, "$name already exists")
+        }
+        // Written under a temporary name, so the game list never shows half a ROM.
+        // Also replaces leftovers of an interrupted upload of the same file.
+        val partial = File(root, name + PARTIAL_SUFFIX)
+        partial.delete()
+        sendContinueIfExpected(request, output)
+        onTransferActive?.invoke(true)
+        try {
+            FileOutputStream(partial).use { copyBody(request, length, it) }
+            if (target.exists() && !target.delete()) {
+                throw HttpError(500, "Could not replace $name")
+            }
+            if (!partial.renameTo(target)) {
+                throw HttpError(500, "Could not rename the uploaded file to $name")
+            }
+        } catch (e: Exception) {
+            partial.delete()
             throw e
         } finally {
             onTransferActive?.invoke(false)

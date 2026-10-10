@@ -10,6 +10,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
+import org.citra.citra_emu.utils.CitraVrDirectories
 import org.citra.citra_emu.utils.DirectoryInitialization
 import org.citra.citra_emu.utils.DocumentsTree
 import org.citra.citra_emu.utils.GraphicsUtil
@@ -51,6 +52,9 @@ open class CitraApplication : Application() {
         super.onCreate()
         application = this
         documentsTree = DocumentsTree()
+        // Picker-granted folders become plain paths when possible, so they survive
+        // the grants being dropped (Lepton does that on every app update).
+        CitraVrDirectories.migrateToPlainPaths(applicationContext)
         if (PermissionsHandler.hasWriteAccess(applicationContext)) {
             DirectoryInitialization.start()
         }

@@ -90,7 +90,9 @@ steam-library: app id … is now 'Citra VR - Steam Frame Edition', 4 artwork ima
 
 Run it again after each build to update. Your data is kept. `./register-frame.sh --uninstall` removes the entry, its artwork and the files on the headset.
 
-The library title gets its **own Android data**, separate from Lepton Development's. The first time you start it, do the setup again (folders, then ROMs, for example with the ROM upload server below).
+The library title gets its **own Android data**, separate from Lepton Development's. On its first start, CitraVR asks one question, **Do you want to manually configure Citra directories?**. Answering **No** creates `/storage/emulated/0/CitraVR` (data) and `/storage/emulated/0/CitraVR/games` (games); add ROMs with the ROM upload server below.
+
+**Folders and updates:** with all-files access, which Lepton grants, CitraVR uses its folders as plain file-system paths instead of folder grants from Android's picker. Lepton drops picker grants on every APK update, which used to leave CitraVR unable to read its folders. Folders picked earlier are switched to plain paths automatically at startup when they're on the headset's storage.
 
 The artwork is generated from `assets/citravr_logo.png` by `steam-frame/make_library_art.py` (needs Pillow and NumPy). Rerun it after changing the design. The scripts in `steam-frame/` are shared with the Time Crisis VR Steam Frame port.
 
@@ -119,7 +121,7 @@ Notes:
 - Only playable ROM types are accepted (`.3ds`, `.cci`, `.cxi`, `.3dsx`, `.app`, `.axf`, `.elf`, and their `z` compressed variants). Large files are streamed straight into the folder with no size limit beyond free space.
 - **Steam Frame:** works from the network. Lepton's container shares the headset's IP address and forwards the ports apps listen on, as long as the headset isn't already using them. That's why the server uses port 8338: the Steam client already holds 8080.
 
-Note: Lepton has been reported to reset a container's data after an APK update. Back up your saves (`/sdcard/citra-emu` or the user folder you picked) before updating.
+Note: updating the APK keeps your folders, games and saves (see *Folders and updates* above).
 
 ## Debugging
 

@@ -14,6 +14,7 @@ import org.citra.citra_emu.features.settings.model.AbstractSetting
 import org.citra.citra_emu.features.settings.model.BooleanSetting
 import org.citra.citra_emu.features.settings.model.IntSetting
 import org.citra.citra_emu.features.settings.model.Settings
+import org.citra.citra_emu.utils.FileUtil
 import org.citra.citra_emu.utils.DirectoryInitialization.userDirectory
 import org.citra.citra_emu.utils.Log
 import org.ini4j.Wini
@@ -137,7 +138,7 @@ object PerGameSettings {
     }
 
     private fun findExistingFile(): DocumentFile? {
-        val root = DocumentFile.fromTreeUri(
+        val root = FileUtil.directoryDocument(
             CitraApplication.appContext,
             Uri.parse(userDirectory)
         ) ?: return null

@@ -24,6 +24,7 @@ import org.citra.citra_emu.features.settings.model.SettingSection
 import org.citra.citra_emu.features.settings.model.Settings.SettingsSectionMap
 import org.citra.citra_emu.features.settings.model.StringSetting
 import org.citra.citra_emu.features.settings.ui.SettingsActivityView
+import org.citra.citra_emu.utils.FileUtil
 import org.citra.citra_emu.utils.BiMap
 import org.citra.citra_emu.utils.DirectoryInitialization.userDirectory
 import org.citra.citra_emu.utils.Log
@@ -180,7 +181,7 @@ object SettingsFile {
        return getSettingsFile(fileName, "ini.vr")
     }
     fun getSettingsFile(fileName: String, ext: String): DocumentFile {
-        val root = DocumentFile.fromTreeUri(CitraApplication.appContext, Uri.parse(userDirectory))
+        val root = FileUtil.directoryDocument(CitraApplication.appContext, Uri.parse(userDirectory))
         val configDirectory = root?.findFile("config")
 
         // Check if the config directory exists; if not, create it.
@@ -196,7 +197,7 @@ object SettingsFile {
     }
 
     private fun getCustomGameSettingsFile(gameId: String): DocumentFile {
-        val root = DocumentFile.fromTreeUri(CitraApplication.appContext, Uri.parse(userDirectory))
+        val root = FileUtil.directoryDocument(CitraApplication.appContext, Uri.parse(userDirectory))
         val configDirectory = root!!.findFile("GameSettings")
         return configDirectory!!.findFile("$gameId.ini.vr")!!
     }

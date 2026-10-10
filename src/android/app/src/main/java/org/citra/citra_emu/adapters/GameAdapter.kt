@@ -328,7 +328,7 @@ class GameAdapter(
             ).forEach { (id, dir) ->
                 menu.findItem(id)?.isEnabled =
                     CitraApplication.documentsTree.folderUriHelper(dir)?.let {
-                        DocumentFile.fromTreeUri(view.context, it)?.exists()
+                        FileUtil.directoryDocument(view.context, it)?.exists()
                     } ?: false
             }
         }
@@ -374,6 +374,11 @@ class GameAdapter(
             }
 
             uri?.let {
+                if (FileUtil.isFileUri(it)) {
+                    // A plain-path folder can't be handed to another app; show where it is.
+                    Toast.makeText(view.context, it.path, Toast.LENGTH_LONG).show()
+                    return@let true
+                }
                 intent.data = it
                 view.context.startActivity(intent)
                 true
@@ -398,7 +403,7 @@ class GameAdapter(
             ).forEach { (id, dir) ->
                 menu.findItem(id)?.isEnabled =
                     CitraApplication.documentsTree.folderUriHelper(dir)?.let {
-                        DocumentFile.fromTreeUri(view.context, it)?.exists()
+                        FileUtil.directoryDocument(view.context, it)?.exists()
                     } ?: false
             }
         }

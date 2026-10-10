@@ -29,7 +29,7 @@ object GpuDriverHelper {
     val driverStoragePath: DocumentFile
         get() {
             // Bypass directory initialization checks
-            val root = DocumentFile.fromTreeUri(
+            val root = FileUtil.directoryDocument(
                 CitraApplication.appContext,
                 Uri.parse(DirectoryInitialization.userPath)
             )!!

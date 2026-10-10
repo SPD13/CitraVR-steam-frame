@@ -48,6 +48,10 @@ Passthrough and the immersive modes haven't been checked on the headset yet. The
 - **Headset detection:** Lepton (model `Lepton`) is recognised as Steam Frame, with the Quest 3 default resolution (3×).
 - **Menu bar fix:** upstream's secondary-display feature drew the lower game screen over CitraVR's own VR panel displays, which hid the menu bar and its *Close Game* button. Those displays are now excluded.
 
+**One-question setup and folders that survive updates**
+- **First launch:** when CitraVR has all-files access (always on Steam Frame), first launch asks a single question: *Do you want to manually configure Citra directories?* Answering **No** creates `/storage/emulated/0/CitraVR` (data) and `/storage/emulated/0/CitraVR/games` (games) and goes straight to the game list.
+- **Plain paths:** CitraVR's folders are used as plain file-system paths rather than grants from Android's folder picker. Lepton drops picker grants on every app update; plain paths aren't affected. Folders picked earlier are switched to plain paths automatically.
+
 **Switching games without leaving VR (Steam Frame)**
 - **The list:** on the Frame, *Close Game* no longer drops you into the Steam interface. It pauses the game and shows a **Choose a game** panel in VR, with your games and their icons.
 - **Picking a game** restarts the VR part of the app on it, in about a second.
@@ -147,10 +151,11 @@ steam-library: app id … is now 'Citra VR - Steam Frame Edition', 4 artwork ima
 ### 5. First launch
 
 1. In the headset, open **Library → Non-Steam → Citra VR - Steam Frame Edition** and press **Play**. The first start takes a little longer while Lepton prepares the app. If Steam warns that Valve is still learning about the title's compatibility, continue.
-2. CitraVR's 2D window opens. Go through the setup:
-   - **Permissions:** allow the file access CitraVR asks for. Microphone and camera are optional.
-   - **User folder:** in the picker, use **Create new folder** to make one (for example `CitraVR`), then **Use this folder** and **Allow**.
-   - **Games folder:** same steps, for example a `games` folder inside it.
+2. CitraVR's 2D window opens with a single question: **Do you want to manually configure Citra directories?** Answer **No, use default folders**. CitraVR creates its folders on the headset and opens the game list:
+   - `/storage/emulated/0/CitraVR`: its data, saves and settings;
+   - `/storage/emulated/0/CitraVR/games`: your games.
+
+   Answer **Yes, configure manually** only if you want other folders. You then pick them in Android's folder picker.
 3. **Add your games.** In CitraVR's left menu, open **ROM server** and turn on **Enable ROM upload server**. **Server address** shows a URL such as `http://192.168.1.42:8338`. Open it in a browser on your computer, and drag your ROMs (`.3ds`, `.cci`, `.cxi`, `.3dsx`, …) onto the page. They appear in CitraVR's game list as soon as each upload finishes. Turn the server off when you're done: anyone on the network can use it while it's on.
 4. **Play:** pick a game in the list. It opens in VR.
 
@@ -158,7 +163,7 @@ steam-library: app id … is now 'Citra VR - Steam Frame Edition', 4 artwork ima
 
 ### Updating and uninstalling
 
-- **Update:** after building a new APK, run `./register-frame.sh` again. It replaces the app and keeps its library entry. Lepton has been reported to reset an app's data when its APK changes, so back up your saves (in the user folder you picked) before updating.
+- **Update:** after building a new APK, run `./register-frame.sh` again. It replaces the app and keeps its library entry, your folders, games and saves. CitraVR uses its folders as plain paths on the headset's storage. Lepton drops folder grants made with Android's picker on each update, but that doesn't affect plain paths. Folders you picked manually are switched to plain paths automatically when they're on the headset's storage.
 - **Uninstall:** `./register-frame.sh --uninstall` removes the library entry, its artwork and the files in `~/devkit-game/citravr/`.
 
 ### Alternative: install with adb
