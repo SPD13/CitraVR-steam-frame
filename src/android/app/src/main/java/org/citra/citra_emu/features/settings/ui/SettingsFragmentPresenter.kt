@@ -11,8 +11,6 @@ import android.hardware.camera2.CameraAccessException
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import android.text.TextUtils
 import androidx.preference.PreferenceManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -22,8 +20,6 @@ import org.citra.citra_emu.R
 import org.citra.citra_emu.display.ScreenLayout
 import org.citra.citra_emu.display.StereoMode
 import org.citra.citra_emu.display.StereoWhichDisplay
-import org.citra.citra_emu.features.romserver.RomServer
-import org.citra.citra_emu.features.romserver.RomServerService
 import org.citra.citra_emu.features.settings.model.AbstractBooleanSetting
 import org.citra.citra_emu.features.settings.model.AbstractIntSetting
 import org.citra.citra_emu.features.settings.model.AbstractSetting
@@ -2271,79 +2267,6 @@ class SettingsFragmentPresenter(
                     R.string.vr_immersive_eye_indicator_title,
                     R.string.vr_immersive_eye_indicator_description,
                     defaultValue = ""
-                )
-            )
-
-            // The server runs in the main app process, so it is only offered in the
-            // 2D settings, not in the in-game VR panel (a separate process).
-            if (settingsActivity != null) {
-                addRomServerSettings(sl)
-            }
-        }
-    }
-
-    private fun addRomServerSettings(sl: ArrayList<SettingsItem>) {
-        // The server starts asynchronously; refresh the address row once it has.
-        val refreshAddress = {
-            val handler = Handler(Looper.getMainLooper())
-            for (delayMs in longArrayOf(300, 1500)) {
-                handler.postDelayed({ settingsAdapter.notifyDataSetChanged() }, delayMs)
-            }
-        }
-        val romServerEnabled: AbstractBooleanSetting = object : AbstractBooleanSetting {
-            override var boolean: Boolean
-                get() = RomServerService.isEnabled(context)
-                set(value) {
-                    RomServerService.setEnabled(context, value)
-                    refreshAddress()
-                }
-            override val key: String? = null
-            override val section: String? = null
-            override val isRuntimeEditable: Boolean = true
-            override val valueAsString: String
-                get() = RomServerService.isEnabled(context).toString()
-            override val defaultValue = false
-        }
-
-        sl.apply {
-            add(HeaderSetting(R.string.rom_server_title))
-            add(
-                SwitchSetting(
-                    romServerEnabled,
-                    R.string.rom_server_enabled,
-                    R.string.rom_server_enabled_description
-                )
-            )
-            add(
-                RunnableSetting(
-                    R.string.rom_server_address,
-                    R.string.rom_server_address_description,
-                    true,
-                    0,
-                    {
-                        RomServer.refreshUrls()
-                        settingsAdapter.notifyDataSetChanged()
-                    },
-                    {
-                        if (!RomServerService.isEnabled(context)) {
-                            context.getString(R.string.rom_server_off)
-                        } else {
-                            when (val state = RomServer.state.value) {
-                                is RomServer.State.Running ->
-                                    if (state.urls.isEmpty()) {
-                                        context.getString(R.string.rom_server_no_network)
-                                    } else {
-                                        state.urls.joinToString("\n")
-                                    }
-
-                                is RomServer.State.Failed ->
-                                    context.getString(R.string.rom_server_failed, state.message)
-
-                                RomServer.State.Stopped ->
-                                    context.getString(R.string.rom_server_starting)
-                            }
-                        }
-                    }
                 )
             )
         }

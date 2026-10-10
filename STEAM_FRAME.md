@@ -109,8 +109,8 @@ The artwork is generated from `assets/citravr_logo.png` by `steam-frame/make_lib
 
 CitraVR (any headset) can serve a web page for managing ROMs in the games folder:
 
-1. In CitraVR's 2D settings, open **VR → ROM upload server** and turn on **Enable ROM upload server**.
-2. **Server address** shows a URL such as `http://192.168.1.42:8338`. Open it in a browser on a computer on the same network.
+1. In CitraVR's 2D window, open **ROM server** in the left menu and turn on **Enable ROM upload server**.
+2. The screen shows the **Server address**, a URL such as `http://192.168.1.42:8338`. Open it in a browser on a computer on the same network.
 3. The page lists the ROMs in the games folder (and subfolders up to 3 levels deep), with their sizes and the free space. Delete ROMs from there, or drop new ones onto the page. Uploads go to the top of the games folder, and the game list refreshes when each one finishes.
 
 Notes:

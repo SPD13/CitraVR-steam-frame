@@ -54,7 +54,7 @@ Passthrough and the immersive modes haven't been checked on the headset yet. The
 - **Back to game** resumes the current game; **CitraVR window** returns to the 2D app.
 
 **ROM upload server (all headsets)**
-- **The switch** is in *Settings → VR → ROM upload server*. The server runs in the background (foreground service) until turned off, and restarts with the app if left on.
+- **The screen:** a **ROM server** item in CitraVR's left menu opens it, with the on/off switch, the address to open, the server status and the games folder. The server runs in the background (foreground service) until turned off, and restarts with the app if left on.
 - **The page** at `http://<headset IP>:8338` lists the ROMs in the games folder with their sizes and the free space. You can delete ROMs and upload new ones by drag and drop, with progress shown.
 - **Uploads** stream straight into the games folder, so any size works. The game list refreshes by itself. The settings show the address to open.
 
@@ -151,7 +151,7 @@ steam-library: app id … is now 'Citra VR - Steam Frame Edition', 4 artwork ima
    - **Permissions:** allow the file access CitraVR asks for. Microphone and camera are optional.
    - **User folder:** in the picker, use **Create new folder** to make one (for example `CitraVR`), then **Use this folder** and **Allow**.
    - **Games folder:** same steps, for example a `games` folder inside it.
-3. **Add your games.** In CitraVR, open **Options (gear) → Settings → VR**, and turn on **Enable ROM upload server**. **Server address** shows a URL such as `http://192.168.1.42:8338`. Open it in a browser on your computer, and drag your ROMs (`.3ds`, `.cci`, `.cxi`, `.3dsx`, …) onto the page. They appear in CitraVR's game list as soon as each upload finishes. Turn the server off when you're done: anyone on the network can use it while it's on.
+3. **Add your games.** In CitraVR's left menu, open **ROM server** and turn on **Enable ROM upload server**. **Server address** shows a URL such as `http://192.168.1.42:8338`. Open it in a browser on your computer, and drag your ROMs (`.3ds`, `.cci`, `.cxi`, `.3dsx`, …) onto the page. They appear in CitraVR's game list as soon as each upload finishes. Turn the server off when you're done: anyone on the network can use it while it's on.
 4. **Play:** pick a game in the list. It opens in VR.
 
 **In a game:** press the left controller's **View** button to show the menu bar below the screens. **Close Game** opens the **Choose a game** panel, where you can start another game, go back to the current one, or return to the 2D window. Controls are listed in [STEAM_FRAME.md](STEAM_FRAME.md#controls).
@@ -175,7 +175,7 @@ For development, you can sideload the APK into **Lepton Development** instead: s
 | `Steam did not answer` / `Steam refused` | Developer Mode is off. Turn it on and run the installer again. |
 | The entry is called **Devkit Game: citravr** | The renaming step couldn't reach Steam. Run `./register-frame.sh` again. |
 | No artwork in the library | Run `./register-frame.sh` again, or restart the headset. |
-| The ROM upload page doesn't load | Check the server is on and the address matches the one in Settings → VR. The computer must be on the same network. |
+| The ROM upload page doesn't load | Check the server is on and the address matches the one on the **ROM server** screen. The computer must be on the same network. |
 | After Play, only the Steam interface shows | The SteamVR dashboard is in front: choose **Resume**, or close the dashboard. |
 
 ## Introduction
