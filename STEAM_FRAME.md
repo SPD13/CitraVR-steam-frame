@@ -62,7 +62,39 @@ You need JDK 17, Android SDK platform 35, and NDK `27.3.13750724`. The GitHub Ac
 
 Turn on Developer Mode on the Frame first (Steam Settings → Developer).
 
-### With adb (simplest for testing)
+### Into the Steam library (recommended)
+
+`register-frame.sh` installs CitraVR as a library title, **Library → Non-Steam → CitraVR**, with its own artwork, launched through Lepton like any other game. It does what Valve's SteamOS Devkit Client **Title Upload** does with runtime **Android**. It needs:
+- **Developer Mode** on the Frame (Steam Settings → System), with a user password.
+- **ssh access** as `steamos`. Copy your key once with `ssh-copy-id steamos@frame.local`.
+- **Steam running** on the headset (it always is while the headset is on).
+
+From the repository root, after building:
+
+```sh
+./register-frame.sh                         # installs src/android/app/build/outputs/apk/release/app-release.apk
+./register-frame.sh path/to/CitraVR.apk     # or another APK
+FRAME_HOST=192.168.1.42 ./register-frame.sh # if frame.local does not resolve
+```
+
+It prints one line per step:
+1. **Register:** copies the APK to `~/devkit-game/citravr/` on the headset and registers it with Steam as a devkit title on the Lepton runtime. It also adds the `lepton-show-flatscreen` file, so the 2D game list is shown.
+2. **Artwork:** installs the images in `steam-frame/library-art/` into Steam's artwork folder.
+3. **Name:** renames the entry from "Devkit Game: citravr" to **CitraVR** and applies the artwork through the Steam client, without restarting it.
+
+```text
+registered as Devkit Game: citravr (Android runtime, Lepton)
+Devkit Game: citravr: artwork installed for appid … in …/config/grid
+steam-library: app id … is now 'CitraVR', 4 artwork images set
+```
+
+Run it again after each build to update. Your data is kept. `./register-frame.sh --uninstall` removes the entry, its artwork and the files on the headset.
+
+The library title gets its **own Android data**, separate from Lepton Development's. The first time you start it, do the setup again (folders, then ROMs, for example with the ROM upload server below).
+
+The artwork is generated from `assets/citravr_logo.png` by `steam-frame/make_library_art.py` (needs Pillow and NumPy). Rerun it after changing the design. The scripts in `steam-frame/` are shared with the Time Crisis VR Steam Frame port.
+
+### With adb (for development)
 
 1. On the Frame, launch **Lepton Development** from the Steam library. A floating Android home screen appears.
 2. From your PC, run:
@@ -72,10 +104,6 @@ Turn on Developer Mode on the Frame first (Steam Settings → Developer).
    adb push "My Game.3ds" /sdcard/Download/
    ```
 3. Open CitraVR from the Android home screen in the floating window, add `/sdcard/Download` (or wherever you pushed games) as the games folder, and start a game. The game opens in VR.
-
-### As a Steam library entry
-
-Third-party tools such as [FrameLoad](https://github.com/Crypto90/frameload) and [FrameDrop](https://steamdeckhq.com/news/framedrop-sideloader-announced/) add an APK to the Steam library. To do it by hand from desktop mode, add the APK as a non-Steam game, then in its Properties → Compatibility, force the **Lepton** compatibility tool. Put an empty file named `lepton-show-flatscreen` next to the APK. Without it, SteamVR does not show CitraVR's 2D game list.
 
 ### Adding ROMs from a computer (ROM upload server)
 
