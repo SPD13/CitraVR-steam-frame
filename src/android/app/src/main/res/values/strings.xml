@@ -915,6 +915,10 @@
     <string name="vr_error_two_instances_title">Error: Detected Two CitraVR Instances</string>
     <string name="vr_error_two_instances_message">Detected a fatal launch bug with CitraVR.  This is a known issue. \n\nThe problem is now resolved.   Please try launching the game again. </string>
     <string name="vr_extra_performance_mode">VR Extra Performance Mode</string>
+    <string name="vr_game_list_title">Choose a game</string>
+    <string name="vr_game_list_empty">No games found. Add ROMs to your games folder, then refresh the game list in the CitraVR window.</string>
+    <string name="vr_game_list_back_to_game">Back to game</string>
+    <string name="vr_game_list_citra_window">CitraVR window</string>
     <string name="rom_server_title">ROM upload server</string>
     <string name="rom_server_enabled">Enable ROM upload server</string>
     <string name="rom_server_enabled_description">Serves a web page for adding and deleting ROMs in your games folder from a computer on the same network. Anyone on the network can use it while it is on. Keeps running in the background until turned off.</string>

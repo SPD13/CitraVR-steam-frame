@@ -35,6 +35,16 @@ On Steam Frame controllers (if SteamVR accepts the Frame controller profile):
 
 If the Frame profile is rejected, SteamVR maps the Frame controllers onto the Quest Touch bindings. In that case, Frame's three upper face buttons on each side act as Touch B/Y.
 
+## Switching games without leaving VR
+
+On Steam Frame, **Close Game** (in the menu bar under the game screens) doesn't end the VR session. It pauses the game and shows a **Choose a game** panel listing your games, so you stay in VR:
+
+- **Pick a game** to start it. A game can't be started in a VR process that already ran one, so CitraVR ends the VR process and starts the new game in a fresh one. Expect about a second of the Steam interface in between.
+- **Back to game** closes the panel and resumes the current game.
+- **CitraVR window** ends the VR session and returns to CitraVR's 2D window, which is what Close Game did before.
+
+The panel shows the game list as last scanned by CitraVR's 2D window. ROMs added while a game is running appear after the 2D window refreshes its list. On Quest, Close Game still returns to the 2D window, which the system brings back on its own.
+
 ## Building
 
 The APK is the same one used on Quest (`arm64-v8a`):

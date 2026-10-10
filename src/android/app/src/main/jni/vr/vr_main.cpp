@@ -437,6 +437,11 @@ private:
             VR::JniGlobalRef::gVrErrorMessageLayerClass, XrVector3f{0, -0.1f, -1.0f},
             XrQuaternionf{0, 0, 0, 1}, jni, mActivityObject, gOpenXr->mSession);
 
+        // Game list shown after "Close Game", in place of the game screens.
+        mGameListLayer = std::make_unique<UILayer>(
+            VR::JniGlobalRef::gVrGameListLayerClass, XrVector3f{0, -0.1f, -1.4f},
+            XrQuaternionf{0, 0, 0, 1}, jni, mActivityObject, gOpenXr->mSession);
+
         // Create the cursor layer.
         mCursorLayer = std::make_unique<CursorLayer>(gOpenXr->mSession);
 
@@ -522,8 +527,11 @@ private:
         //////////////////////////////////////////////////
 
         // enable toggle when menu is set to main. Otherwise, always on (super immersive disabled).
-        const bool showUIRibbon = appState.mLowerMenuType == LowerMenuType::POSITIONAL_MENU ||
-                                  appState.mIsLowerMenuToggledOn;
+        // The game list replaces the game screens and menu bar while it's shown.
+        const bool showGameList = appState.mShouldShowGameList;
+        const bool showUIRibbon = !showGameList &&
+                                  (appState.mLowerMenuType == LowerMenuType::POSITIONAL_MENU ||
+                                   appState.mIsLowerMenuToggledOn);
 
         float      immersiveModeFactor    = (VRSettings::values.vr_immersive_mode < 2)
                                                 ? immersiveScaleFactor[VRSettings::values.vr_immersive_mode]
@@ -550,6 +558,7 @@ private:
         mRibbonLayer->UpdateSurface();
         mKeyboardLayer->UpdateSurface();
         mErrorMessageLayer->UpdateSurface();
+        mGameListLayer->UpdateSurface();
 
         uint32_t                        layerCount = 0;
         std::vector<XrCompositionLayer> layers(gOpenXr->mMaxLayerCount, XrCompositionLayer{});
@@ -573,9 +582,15 @@ private:
             }
 
             // Game surface (upper and lower panels) are in front of the passthrough layer.
+            // FrameTopPanel also latches new game frames, so call it either way.
+            const uint32_t layerCountBeforeTopPanel = layerCount;
             mGameSurfaceLayer->FrameTopPanel(gOpenXr->mLocalSpace, layers, layerCount,
                                              gOpenXr->headLocation.pose, isImmersiveModeEnabled,
                                              immersiveModeFactor);
+            if (showGameList) {
+                layerCount = layerCountBeforeTopPanel;
+                mGameListLayer->Frame(gOpenXr->mLocalSpace, layers, layerCount);
+            }
 
             if (showUIRibbon) { mRibbonLayer->Frame(gOpenXr->mLocalSpace, layers, layerCount); }
             const bool showLowerPanel =
@@ -597,7 +612,8 @@ private:
 
             // Cursor visibility will depend on hit-test but will be in front
             // of all other panels. This is because precedence lines up with depth order.
-            HandleCursorLayer(jni, appState, showLowerPanel, showUIRibbon, layers, layerCount);
+            HandleCursorLayer(jni, appState, showLowerPanel, showUIRibbon, showGameList, layers,
+                              layerCount);
         }
 
         std::vector<const XrCompositionLayerBaseHeader*> layerHeaders;
@@ -819,8 +835,8 @@ private:
      *  interactions.
      **/
     void HandleCursorLayer(JNIEnv* jni, const AppState& appState, const bool showLowerPanel,
-                           const bool showUIRibbon, std::vector<XrCompositionLayer>& layers,
-                           uint32_t& layerCount) const {
+                           const bool showUIRibbon, const bool showGameList,
+                           std::vector<XrCompositionLayer>& layers, uint32_t& layerCount) const {
 
         bool                    shouldRenderCursor = false;
         XrPosef                 cursorPose3d       = XrMath::Posef::Identity();
@@ -877,7 +893,39 @@ private:
                     }
                 }
 
-                // 2. Keyboard layer
+                // 2. Game list (replaces the game panels while shown)
+                if (!shouldRenderCursor && showGameList) {
+                    shouldRenderCursor = mGameListLayer->GetRayIntersectionWithPanel(
+                        start, end, cursorPos2d, cursorPose3d);
+                    // Same press/drag/cancel handling as the menu bar, so the list
+                    // can be dragged to scroll.
+                    static bool sIsGameListPressed = false;
+                    if (shouldRenderCursor) {
+                        if (triggerState.changedSinceLastSync) {
+                            mGameListLayer->SendClickToUI(cursorPos2d, triggerState.currentState);
+                            sIsGameListPressed = triggerState.currentState == 1;
+                        } else if (triggerState.currentState == 1 && sIsGameListPressed) {
+                            mGameListLayer->SendClickToUI(cursorPos2d, 2 /* move */);
+                        } else if (triggerState.currentState == 0) {
+                            sIsGameListPressed = false;
+                        }
+                        // The thumbstick scrolls the list under the cursor.
+                        const XrActionStateVector2f& thumbstickState =
+                            mInputStateFrame.mThumbStickState[mInputStateFrame.mPreferredHand];
+                        static constexpr float kScrollDeadZone    = 0.3f;
+                        static constexpr float kScrollSpeedFactor = 0.5f;
+                        if (std::abs(thumbstickState.currentState.y) > kScrollDeadZone) {
+                            mGameListLayer->SendScrollToUI(
+                                cursorPos2d,
+                                {0.0f, thumbstickState.currentState.y * kScrollSpeedFactor});
+                        }
+                    } else if (sIsGameListPressed) {
+                        mGameListLayer->SendClickToUI(cursorPos2d, 3 /* cancel */);
+                        sIsGameListPressed = false;
+                    }
+                }
+
+                // 3. Keyboard layer
                 if (!shouldRenderCursor && appState.mIsKeyboardActive) {
                     shouldRenderCursor = mKeyboardLayer->GetRayIntersectionWithPanel(
                         start, end, cursorPos2d, cursorPose3d);
@@ -888,7 +936,7 @@ private:
                 // No dialogs/popups that should impede normal cursor interaction with
                 // applicable panels
 
-                // 3. Lower panel
+                // 4. Lower panel
                 if (!shouldRenderCursor && showLowerPanel) {
                     shouldRenderCursor = mGameSurfaceLayer->GetRayIntersectionWithPanel(
                         start, end, cursorPos2d, cursorPose3d);
@@ -898,7 +946,7 @@ private:
                     }
                 }
 
-                // 4. Ribbon layer
+                // 5. Ribbon layer
                 if (!shouldRenderCursor && showUIRibbon) {
                     shouldRenderCursor = mRibbonLayer->GetRayIntersectionWithPanel(
                         start, end, cursorPos2d, cursorPose3d);
@@ -966,8 +1014,8 @@ private:
                     }
                 }
 
-                // 5. Top panel (only if positional menu is active)
-                if (!shouldRenderCursor &&
+                // 6. Top panel (only if positional menu is active)
+                if (!shouldRenderCursor && !showGameList &&
                     appState.mLowerMenuType == LowerMenuType::POSITIONAL_MENU) {
                     shouldRenderCursor = mGameSurfaceLayer->GetRayIntersectionWithPanelTopPanel(
                         start, end, cursorPos2d, cursorPose3d);
@@ -993,7 +1041,7 @@ private:
                     }
                 }
 
-                if (!shouldRenderCursor) {
+                if (!shouldRenderCursor && !showGameList) {
                     // Handling this here means L2/R2 are liable to
                     // be slightly out of sync with the other
                     // buttons (which are handled before
@@ -1054,6 +1102,7 @@ private:
         {
             const bool shouldPauseEmulation =
                 !newState.mHasFocus || newState.mShouldShowErrorMessage ||
+                newState.mShouldShowGameList ||
                 newState.mLowerMenuType == LowerMenuType::POSITIONAL_MENU;
             if (shouldPauseEmulation != mLastAppState.mIsEmulationPaused ||
                 newState.mLowerMenuType != mLastAppState.mLowerMenuType) {
@@ -1302,6 +1351,11 @@ private:
                     }
                     break;
                 }
+                case Message::Type::SHOW_GAME_LIST: {
+                    ALOGI("Received SHOW_GAME_LIST message: {}", message.mPayload);
+                    newAppState.mShouldShowGameList = message.mPayload == 1;
+                    break;
+                }
                 case Message::Type::EXIT_NEEDED: {
                     ALOGD("Received EXIT_NEEDED message");
                     newAppState.mIsStopRequested = true;
@@ -1428,6 +1482,7 @@ private:
 
         bool mIsKeyboardActive       = false;
         bool mShouldShowErrorMessage = false;
+        bool mShouldShowGameList     = false;
         bool mIsEmulationPaused      = false;
 
         bool mIsStopRequested   = false;
@@ -1444,6 +1499,7 @@ private:
     std::unique_ptr<PassthroughLayer> mPassthroughLayer;
     std::unique_ptr<AlphaBlendPassthroughLayer> mAlphaBlendPassthroughLayer;
     std::unique_ptr<UILayer> mKeyboardLayer;
+    std::unique_ptr<UILayer> mGameListLayer;
     std::unique_ptr<RibbonLayer> mRibbonLayer;
 
     std::unique_ptr<InputStateStatic> mInputStateStatic;

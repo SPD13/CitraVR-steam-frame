@@ -7,6 +7,7 @@ namespace JniGlobalRef {
 extern jclass gVrKeyboardLayerClass;
 extern jclass gVrErrorMessageLayerClass;
 extern jclass gVrRibbonLayerClass;
+extern jclass gVrGameListLayerClass;
 
 } // namespace JniGlobalRef
 

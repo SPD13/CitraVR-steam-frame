@@ -224,6 +224,15 @@ class MainActivity :
                 .setPositiveButton(android.R.string.ok, null)
                 .show()
         }
+
+        // A game picked from the VR game list (Steam Frame) is started from here.
+        VrActivity.launchGameFromIntentIfRequested(this, intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        VrActivity.launchGameFromIntentIfRequested(this, intent)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
