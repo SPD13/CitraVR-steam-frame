@@ -52,6 +52,8 @@ License     :   Licensed under GPLv3 or any later version.
 #include "../SurfaceSwapchain.h"
 #include "../utils/Common.h"
 
+#include <chrono>
+#include <deque>
 #include <memory>
 #include <string>
 
@@ -127,8 +129,9 @@ public:
     /** Forwards the click event to the corresponding position on the Android UI window.
      *  @param pos2d the 2D position of the click in the Android display coordinate
      *  system.
-     *  @param type the type of the click event. 0 for down, 1 for up, 2 for movement (while cursor
-     *  is already pressed), 3 for cancel (cursor left the panel mid-press).
+     *  @param type the type of the click event. 1 for down, 0 for up (as the trigger state),
+     *  2 for movement (while cursor is already pressed), 3 for cancel (cursor left the panel
+     *  mid-press). Down is placed where the cursor was just before the trigger pull.
      */
     void SendClickToUI(const XrVector2f& pos2d, const int type);
 
@@ -161,6 +164,14 @@ private:
     const XrSession mSession;
     std::unique_ptr<SurfaceSwapchain> mSurfaceSwapchain;
     mutable bool                      mHasLoggedFirstFrame = false;
+
+    // Where the cursor has recently been on this panel (cleared when it leaves),
+    // so a press can be placed where the user aimed; see SendClickToUI().
+    struct CursorSample {
+        std::chrono::steady_clock::time_point mTime;
+        XrVector2f                            mPosition;
+    };
+    mutable std::deque<CursorSample> mCursorHistory;
 
     //============================
     // JNI objects

@@ -21,6 +21,7 @@ import org.citra.citra_emu.utils.Log
 import org.citra.citra_emu.vr.VrActivity
 import java.io.File
 import java.io.FileOutputStream
+import kotlin.math.hypot
 import kotlin.math.roundToInt
 
 /*
@@ -77,8 +78,50 @@ abstract class VrUILayer(
             3 -> MotionEvent.ACTION_CANCEL
             else -> MotionEvent.ACTION_HOVER_ENTER
         }
-        activity.runOnUiThread { dispatchTouchEvent(x, y, action) }
+        activity.runOnUiThread { dispatchPointerEvent(x, y, action) }
         return 0
+    }
+
+    // The gesture in progress: where and when the trigger went down, and whether
+    // the pointer has since moved far enough to be a drag rather than a click.
+    private var gestureDownTime = 0L
+    private var gestureDownX = 0f
+    private var gestureDownY = 0f
+    private var isDragging = false
+
+    /**
+     * Turns the controller's trigger into touch events. A pointer held at arm's
+     * length shakes by more than Android's touch slop while the trigger is
+     * pulled, which made scrollable views take clicks for drags and cancel them.
+     * Until the pointer leaves [CLICK_SLOP_PX] of where the trigger went down,
+     * it is reported there, so the release lands as a click; beyond it, the
+     * gesture becomes a drag (e.g. to scroll a list) and follows the pointer.
+     */
+    private fun dispatchPointerEvent(x: Float, y: Float, action: Int) {
+        when (action) {
+            MotionEvent.ACTION_DOWN -> {
+                gestureDownTime = SystemClock.uptimeMillis()
+                gestureDownX = x
+                gestureDownY = y
+                isDragging = false
+                dispatchTouchEvent(x, y, action)
+            }
+
+            MotionEvent.ACTION_MOVE, MotionEvent.ACTION_UP -> {
+                if (!isDragging &&
+                    hypot(x - gestureDownX, y - gestureDownY) > CLICK_SLOP_PX
+                ) {
+                    isDragging = true
+                }
+                if (isDragging) {
+                    dispatchTouchEvent(x, y, action)
+                } else {
+                    dispatchTouchEvent(gestureDownX, gestureDownY, action)
+                }
+            }
+
+            else -> dispatchTouchEvent(x, y, action)
+        }
     }
 
     fun sendScrollToUI(x: Float, y: Float, scrollX: Float, scrollY: Float): Int {
@@ -133,9 +176,16 @@ abstract class VrUILayer(
         val localY = y - windowOffset[1]
 
         val eventTime = SystemClock.uptimeMillis()
+        // Events of a gesture share the time it started, as Android expects (taps,
+        // long presses and flings are measured from it).
+        val downTime = if (action == MotionEvent.ACTION_DOWN || gestureDownTime == 0L) {
+            eventTime
+        } else {
+            gestureDownTime
+        }
 
         val event = MotionEvent.obtain(
-            eventTime, // Use the same timestamp for both downTime and eventTime
+            downTime,
             eventTime,
             action,
             1, // Only one pointer is used here
@@ -250,6 +300,12 @@ abstract class VrUILayer(
         // DPI android uses as "1:1" with dp coordinates.
         // AKA "baseline density"
         private const val DEFAULT_DENSITY = DisplayMetrics.DENSITY_MEDIUM.toFloat()
+
+        // How far (in panel pixels) the pointer may wander while the trigger is held
+        // and still make a click: pulling and releasing the trigger tilts the
+        // controller too. Panels are shown at 1200 px per meter, so this is about
+        // 8 cm, or 3 degrees of hand movement at a panel 1.6 m away.
+        private const val CLICK_SLOP_PX = 100f
         private external fun nativeSetBounds(
             handle: Long, leftInDp: Int, topInDp: Int,
             rightInDp: Int, bottomInDp: Int

@@ -99,6 +99,11 @@ Java_org_citra_citra_1emu_vr_ui_VrUILayer_00024Companion_nativeSetBounds(JNIEnv*
 
 static constexpr std::chrono::milliseconds kMinTimeBetweenChecks(500);
 
+// How long a trigger pull takes, and how much cursor history is kept to place
+// presses where the user aimed (see UILayer::SendClickToUI()).
+constexpr std::chrono::milliseconds kTriggerPullDuration(120);
+constexpr std::chrono::milliseconds kCursorHistoryDuration(500);
+
 // Get density on an interval
 float GetDensitySysprop() {
     const float                                               kDefaultDensity = 1200;
@@ -219,8 +224,20 @@ bool UILayer::GetRayIntersectionWithPanel(const XrVector3f& start,
                                           XrPosef&          result3d) const {
     const Swapchain& swapchain = mSurfaceSwapchain->GetSwapchain();
     const XrVector2f scale = GetDensityScaleForSize(swapchain.mWidth, swapchain.mHeight, 1.0f);
-    return ::GetRayIntersectionWithPanel(mWorldFromPanel, swapchain.mWidth, swapchain.mHeight,
-                                         scale, start, end, result2d, result3d);
+    const bool isHit = ::GetRayIntersectionWithPanel(mWorldFromPanel, swapchain.mWidth,
+                                                     swapchain.mHeight, scale, start, end,
+                                                     result2d, result3d);
+    if (!isHit) {
+        mCursorHistory.clear();
+        return false;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    mCursorHistory.push_back({now, result2d});
+    while (mCursorHistory.size() > 1 &&
+           now - mCursorHistory.front().mTime > kCursorHistoryDuration) {
+        mCursorHistory.pop_front();
+    }
+    return true;
 }
 
 // Next error code: -9
@@ -324,7 +341,22 @@ void UILayer::UpdateSurface() {
 }
 
 void UILayer::SendClickToUI(const XrVector2f& pos2d, const int type) {
-    mEnv->CallIntMethod(mVrUILayerObject, mSendClickToUIMethodID, pos2d.x, pos2d.y, type);
+    // Pulling the trigger tilts the controller, and the press only registers at
+    // the end of the pull: by then the cursor has dropped by a few centimeters,
+    // enough to miss a small button. Place the press where the cursor was just
+    // before the pull (or where it entered the panel, if more recently).
+    XrVector2f position = pos2d;
+    if (type == 1 && !mCursorHistory.empty()) {
+        const auto aimedTime = std::chrono::steady_clock::now() - kTriggerPullDuration;
+        position = mCursorHistory.front().mPosition;
+        for (const CursorSample& sample : mCursorHistory) {
+            if (sample.mTime > aimedTime) {
+                break;
+            }
+            position = sample.mPosition;
+        }
+    }
+    mEnv->CallIntMethod(mVrUILayerObject, mSendClickToUIMethodID, position.x, position.y, type);
 }
 
 void UILayer::SendScrollToUI(const XrVector2f& pos2d, const XrVector2f& scroll2d) {
