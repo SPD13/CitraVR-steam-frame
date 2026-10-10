@@ -28,6 +28,7 @@ License     :   Licensed under GPLv3 or any later version.
 
 #include <GLES3/gl3.h>
 
+#include <chrono>
 #include <vector>
 
 class SurfaceSwapchain {
@@ -78,6 +79,7 @@ private:
     void CreateCopyResources();
     void ClearSwapchainImage();
     void CopySurfaceTextureToSwapchain(const float transformMatrix[16]);
+    void DumpBoundFramebufferIfRequested(const float transformMatrix[16]);
     void Shutdown();
 
     const bool mIsAndroidSurfaceSwapchain;
@@ -97,6 +99,7 @@ private:
     // Frames latched with updateTexImage(), compared against the listener's count.
     jlong mLatchedFrameCount = 0;
     bool mHasCopiedFrame = false;
+    std::chrono::steady_clock::time_point mLastDumpTime{};
 
     // Whether the swapchain stores sRGB-encoded values, in which case the copy
     // decodes the (sRGB-encoded) Android content to linear and the GPU encodes it

@@ -160,6 +160,7 @@ private:
 
     const XrSession mSession;
     std::unique_ptr<SurfaceSwapchain> mSurfaceSwapchain;
+    mutable bool                      mHasLoggedFirstFrame = false;
 
     //============================
     // JNI objects

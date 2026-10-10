@@ -19,6 +19,7 @@ import org.citra.citra_emu.NativeLibrary
 import org.citra.citra_emu.features.settings.model.BooleanSetting
 import org.citra.citra_emu.features.settings.model.IntSetting
 import org.citra.citra_emu.utils.Log
+import org.citra.citra_emu.vr.ui.VrUILayer
 
 class SecondaryDisplay(val context: Context) : DisplayManager.DisplayListener {
     private var pres: SecondaryDisplayPresentation? = null
@@ -74,6 +75,8 @@ class SecondaryDisplay(val context: Context) : DisplayManager.DisplayListener {
             isNotDefaultOrPresentable &&
                 it.displayId != currentDisplayId &&
                 it.name != "HiddenDisplay" &&
+                // CitraVR's own VR UI panels are presentation displays too
+                it.name != VrUILayer.VIRTUAL_DISPLAY_NAME &&
                 it.state != Display.STATE_OFF &&
                 it.isValid
         }

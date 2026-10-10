@@ -213,7 +213,7 @@ abstract class VrUILayer(
         // Create a virtual display based on the exact dimensions needed for the view
         val displayManager = activity.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         virtualDisplay = displayManager.createVirtualDisplay(
-            "CitraVR", widthDp, heightDp, requestedDensity.toInt(), surface,
+            VIRTUAL_DISPLAY_NAME, widthDp, heightDp, requestedDensity.toInt(), surface,
             DisplayManager.VIRTUAL_DISPLAY_FLAG_PRESENTATION
         )
         presentation = Presentation(activity.applicationContext, virtualDisplay!!.display).apply {
@@ -243,6 +243,10 @@ abstract class VrUILayer(
     }
 
     companion object {
+        // Name of the virtual displays the VR UI panels are drawn on. SecondaryDisplay
+        // must never pick these to show a game screen on.
+        const val VIRTUAL_DISPLAY_NAME = "CitraVR"
+
         // DPI android uses as "1:1" with dp coordinates.
         // AKA "baseline density"
         private const val DEFAULT_DENSITY = DisplayMetrics.DENSITY_MEDIUM.toFloat()

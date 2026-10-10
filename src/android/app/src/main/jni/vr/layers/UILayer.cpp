@@ -205,6 +205,12 @@ void UILayer::Frame(const XrSpace&                   space,
     layer.size.width  = scale.x;
     layer.size.height = scale.y;
     layers[layerCount++].mQuad = layer;
+    if (!mHasLoggedFirstFrame) {
+        mHasLoggedFirstFrame = true;
+        ALOGI("UILayer {}x{}: first submitted at ({}, {}, {}), size {}x{} m", swapchain.mWidth,
+              swapchain.mHeight, layer.pose.position.x, layer.pose.position.y,
+              layer.pose.position.z, layer.size.width, layer.size.height);
+    }
 }
 
 bool UILayer::GetRayIntersectionWithPanel(const XrVector3f& start,

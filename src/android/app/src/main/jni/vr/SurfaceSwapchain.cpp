@@ -15,11 +15,17 @@ License     :   Licensed under GPLv3 or any later version.
 
 #include "utils/Common.h"
 #include "utils/JniUtils.h"
+#include "utils/SyspropUtils.h"
+
+#include <fmt/format.h>
 #include "utils/LogUtils.h"
 
 #include <GLES2/gl2ext.h> // GL_TEXTURE_EXTERNAL_OES
 
 #include <algorithm>
+#include <chrono>
+#include <cstdio>
+#include <string>
 #include <cstring>
 
 #include <assert.h>
@@ -394,10 +400,39 @@ void SurfaceSwapchain::CopySurfaceTextureToSwapchain(const float transformMatrix
     glBindVertexArray(0);
     glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0);
     glUseProgram(0);
+    DumpBoundFramebufferIfRequested(transformMatrix);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     XrSwapchainImageReleaseInfo releaseInfo = {XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO, nullptr};
     OXR(xrReleaseSwapchainImage(mSwapchain.mHandle, &releaseInfo));
+}
+
+// Debugging aid: with `setprop debug.citra.dump_swapchains 1`, writes what was just
+// copied into each swapchain (raw RGBA rows as glReadPixels returns them, bottom
+// row first) to the app's files directory, at most once per second per swapchain.
+void SurfaceSwapchain::DumpBoundFramebufferIfRequested(const float transformMatrix[16]) {
+    if (SyspropUtils::GetSysPropAsInt("debug.citra.dump_swapchains", 0) == 0) {
+        return;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    if (now - mLastDumpTime < std::chrono::seconds(1)) {
+        return;
+    }
+    mLastDumpTime = now;
+    std::vector<uint8_t> pixels(static_cast<size_t>(mSwapchain.mWidth) * mSwapchain.mHeight * 4);
+    glReadPixels(0, 0, mSwapchain.mWidth, mSwapchain.mHeight, GL_RGBA, GL_UNSIGNED_BYTE,
+                 pixels.data());
+    const std::string path = fmt::format("/data/data/org.citra.citra_emu/files/swapchain_{}x{}.rgba",
+                                         mSwapchain.mWidth, mSwapchain.mHeight);
+    if (FILE* file = fopen(path.c_str(), "wb")) {
+        fwrite(pixels.data(), 1, pixels.size(), file);
+        fclose(file);
+    }
+    const float* m = transformMatrix;
+    ALOGI("SurfaceSwapchain: dumped {} (srgb={}); texture matrix [{} {} {} {} | {} {} {} {} | {} "
+          "{} {} {} | {} {} {} {}]",
+          path, mIsSrgbSwapchain, m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8], m[9],
+          m[10], m[11], m[12], m[13], m[14], m[15]);
 }
 
 const void* SurfaceSwapchain::GetLayerNext() const {

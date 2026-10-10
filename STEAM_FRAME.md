@@ -87,6 +87,7 @@ Note: Lepton has been reported to reset a container's data after an APK update. 
 
 - `adb logcat | grep -i -E "citra|openxr|steamvr"` while connected to Lepton. Startup logs which optional extensions are missing, the runtime name and version, and whether each panel uses a surface-backed or SurfaceTexture-fed swapchain.
 - On the Frame itself (SSH or Konsole): `lepton dev logcat`, and the launch logs in `~/.local/share/Steam/logs/lepton-*`.
+- `adb shell setprop debug.citra.dump_swapchains 1` makes CitraVR write what it copies into each VR panel to `/data/data/org.citra.citra_emu/files/swapchain_<w>x<h>.rgba` (raw RGBA, bottom row first, refreshed once a second). Pull them with `adb pull` to see exactly what SteamVR is given. Set it back to 0 when done.
 - Valve's docs: [Connecting adb to Lepton](https://partner.steamgames.com/doc/steamhardware/steamframe/adb_lepton), [Steam Frame Debugging](https://partner.steamgames.com/doc/steamhardware/steamframe/debugging).
 
 ## Testing checklist
