@@ -14,6 +14,7 @@ License     :   Licensed under GPLv3 or any later version.
 #include "utils/LogUtils.h"
 
 #include "XrController.h"
+#include "layers/ControllerLayer.h"
 #include "layers/CursorLayer.h"
 #include "layers/GameSurfaceLayer.h"
 #include "layers/PassthroughLayer.h"
@@ -445,6 +446,11 @@ private:
         // Create the cursor layer.
         mCursorLayer = std::make_unique<CursorLayer>(gOpenXr->mSession);
 
+        // Controllers and pointer ray, drawn in 3D over the panels (VR settings).
+        if (VRSettings::values.vr_show_controllers || VRSettings::values.vr_show_pointer_ray) {
+            mControllerLayer = std::make_unique<ControllerLayer>(gOpenXr->mSession);
+        }
+
         //////////////////////////////////////////////////
         // Intialize JNI methods
         //////////////////////////////////////////////////
@@ -612,8 +618,20 @@ private:
 
             // Cursor visibility will depend on hit-test but will be in front
             // of all other panels. This is because precedence lines up with depth order.
+            ControllerLayer::PointerRay pointerRay;
             HandleCursorLayer(jni, appState, showLowerPanel, showUIRibbon, showGameList, layers,
-                              layerCount);
+                              layerCount, pointerRay);
+
+            // Controllers and pointer ray (quad layers, placed by depth among the panels).
+            if (mControllerLayer != nullptr) {
+                if (!VRSettings::values.vr_show_pointer_ray) {
+                    pointerRay.mIsVisible = false;
+                }
+                mControllerLayer->Frame(gOpenXr->mSession, gOpenXr->mLocalSpace,
+                                        frameState.predictedDisplayTime, mInputStateFrame,
+                                        VRSettings::values.vr_show_controllers, pointerRay, layers,
+                                        layerCount);
+            }
         }
 
         std::vector<const XrCompositionLayerBaseHeader*> layerHeaders;
@@ -836,7 +854,8 @@ private:
      **/
     void HandleCursorLayer(JNIEnv* jni, const AppState& appState, const bool showLowerPanel,
                            const bool showUIRibbon, const bool showGameList,
-                           std::vector<XrCompositionLayer>& layers, uint32_t& layerCount) const {
+                           std::vector<XrCompositionLayer>& layers, uint32_t& layerCount,
+                           ControllerLayer::PointerRay& pointerRay) const {
 
         bool                    shouldRenderCursor = false;
         XrPosef                 cursorPose3d       = XrMath::Posef::Identity();
@@ -1071,10 +1090,32 @@ private:
             if (sIsLowerPanelBeingPositioned) { shouldRenderCursor = true; }
         }
 
+        // The pointer ray: from the preferred controller to the cursor, or a short
+        // ray fading out when it points at nothing.
+        if (mInputStateFrame.mIsHandActive[mInputStateFrame.mPreferredHand]) {
+            constexpr float kFreeRayLengthInMeters = 0.6f;
+            pointerRay.mIsVisible = true;
+            pointerRay.mAimPose =
+                mInputStateFrame.mHandPositions[mInputStateFrame.mPreferredHand].pose;
+            pointerRay.mHitsPanel = shouldRenderCursor;
+            pointerRay.mLength =
+                shouldRenderCursor
+                    ? XrMath::Vector3f::Length(cursorPose3d.position - pointerRay.mAimPose.position)
+                    : kFreeRayLengthInMeters;
+        }
+
         if (shouldRenderCursor) {
             ALOG_INPUT_VERBOSE("Cursor 2D coords: {} {}", cursorPos2d.x, cursorPos2d.y);
+            // Draw the cursor just in front of the panel it points at (its pose has the
+            // panel's orientation, whose +Z faces the viewer): SteamVR depth-tests
+            // layers, and a cursor in the panel's plane can end up hidden behind it.
+            constexpr float kCursorOffsetFromPanelInMeters = 0.005f;
+            const XrPosef shownCursorPose = {
+                cursorPose3d.orientation,
+                XrMath::Posef::Transform(cursorPose3d,
+                                         XrVector3f{0.0f, 0.0f, kCursorOffsetFromPanelInMeters})};
             XrCompositionLayerQuad quadLayer = {};
-            mCursorLayer->Frame(gOpenXr->mLocalSpace, quadLayer, cursorPose3d, scaleFactor,
+            mCursorLayer->Frame(gOpenXr->mLocalSpace, quadLayer, shownCursorPose, scaleFactor,
                                 cursorType);
             layers[layerCount++].mQuad = quadLayer;
         }
@@ -1494,6 +1535,7 @@ private:
     AppState mLastAppState;
 
     std::unique_ptr<CursorLayer> mCursorLayer;
+    std::unique_ptr<ControllerLayer> mControllerLayer;
     std::unique_ptr<UILayer> mErrorMessageLayer;
     std::unique_ptr<GameSurfaceLayer> mGameSurfaceLayer;
     std::unique_ptr<PassthroughLayer> mPassthroughLayer;

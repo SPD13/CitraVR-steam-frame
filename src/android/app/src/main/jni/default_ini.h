@@ -546,6 +546,14 @@ vr_environment =
 # false (default): Off, true: On
 vr_extra_performance_mode =
 
+# Draws the controllers (SteamVR's models, where available).
+# true (default): On, false: Off
+vr_show_controllers =
+
+# Draws a ray from the pointing controller to the cursor.
+# true (default): On, false: Off
+vr_show_pointer_ray =
+
 # OpenXR CPU performance level. Defaults to 4 (highest) in CitraVR.
 # 1: Power savings, 2: Sustained low, 3: Sustained high, 4: Boost
 vr_cpu_level =

@@ -47,6 +47,14 @@ Passthrough and the immersive modes haven't been checked on the headset yet. The
 - **Steam Frame controllers:** native bindings through `XR_VALVE_frame_controller_interaction`. A/B/X/Y are on the right controller, the 3DS d-pad on the left d-pad, L/R on the bumpers (and grips), and the left **View** button toggles the menu. Action queries also follow the OpenXR spec strictly, which SteamVR requires and Quest didn't.
 - **Headset detection:** Lepton (model `Lepton`) is recognised as Steam Frame, with the Quest 3 default resolution (3×).
 - **Menu bar fix:** upstream's secondary-display feature drew the lower game screen over CitraVR's own VR panel displays, which hid the menu bar and its *Close Game* button. Those displays are now excluded.
+- **Clean lower screen:** SteamVR depth-tests composition layers instead of drawing them in order as Quest does. The lower screen shared its plane with the menu bar's translucent background, and the two z-fought into a moving, CRT-like pattern of black pixels. The lower screen is now drawn just in front of the menu bar, and the pointer dot just in front of whatever it points at.
+- **Sharp panels:** the top screens and the lower screen each get their own swapchain. The lower screen gets a filtered downscale to twice the 3DS resolution, since it's shown smaller than its texels. Every swapchain stays at most 1000 px tall, below the size Valve's injected foveated-rendering layer treats as an eye buffer.
+
+**Controllers and pointer ray**
+- **Controllers:** your controllers are drawn in VR, using SteamVR's own render models of the Steam Frame controllers, read from the headset's SteamVR install and placed with the models' `openxr_aim` reference, as SteamVR places them.
+- **Pointer ray:** a ray runs from the pointing controller to the cursor, so you can see where you point. When it points at nothing, a short ray fades out.
+- **Settings:** **Show controllers** and **Show pointer ray** in the VR settings turn each on or off (both on by default; they apply from the next game start).
+- **How:** SteamVR on Steam Frame draws quad layers over projection layers whatever their order, so both are quad layers, which it sorts by depth among the panels. The ray is a thin quad along the ray, turned towards the head. Each controller is drawn, per eye, into a quad at the controller that faces that eye and is shown to it only, rendered from that eye's position so the stereo pair is exact. Where no model is found (e.g. on Quest), only the ray is drawn.
 
 **One-question setup and folders that survive updates**
 - **First launch:** when CitraVR has all-files access (always on Steam Frame), first launch asks a single question: *Do you want to manually configure Citra directories?* Answering **No** creates `/storage/emulated/0/CitraVR` (data) and `/storage/emulated/0/CitraVR/games` (games) and goes straight to the game list.
@@ -68,7 +76,8 @@ Passthrough and the immersive modes haven't been checked on the headset yet. The
 
 **Development**
 - **CI builds:** a GitHub Actions workflow builds the APK on every push.
-- **Panel dumps:** `adb shell setprop debug.citra.dump_swapchains 1` saves what the app sends to the runtime for each VR panel, which helps debug visuals without wearing the headset.
+- **Panel dumps:** `adb shell setprop debug.citra.dump_swapchains 1` saves what the app sends to the runtime for each VR panel, which helps debug visuals without wearing the headset. `2` saves the next 30 frames instead, and `debug.citra.dump_width` limits dumps to the panels of one width.
+- **Lower screen resolution:** `adb shell setprop debug.citra.lower_panel_resolution <factor>` changes the lower screen's resolution while a game runs (multiples of 320×240, default 2, up to 3).
 - **[STEAM_FRAME.md](STEAM_FRAME.md):** technical notes, install guide, testing checklist and known limitations.
 
 **Known limitations on Steam Frame:**

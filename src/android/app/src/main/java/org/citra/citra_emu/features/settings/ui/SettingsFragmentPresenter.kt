@@ -2197,6 +2197,24 @@ class SettingsFragmentPresenter(
             )
             add(
                 SwitchSetting(
+                    BooleanSetting.VR_SHOW_CONTROLLERS,
+                    R.string.vr_show_controllers,
+                    R.string.vr_show_controllers_description,
+                    BooleanSetting.VR_SHOW_CONTROLLERS.key,
+                    BooleanSetting.VR_SHOW_CONTROLLERS.defaultValue
+                )
+            )
+            add(
+                SwitchSetting(
+                    BooleanSetting.VR_SHOW_POINTER_RAY,
+                    R.string.vr_show_pointer_ray,
+                    R.string.vr_show_pointer_ray_description,
+                    BooleanSetting.VR_SHOW_POINTER_RAY.key,
+                    BooleanSetting.VR_SHOW_POINTER_RAY.defaultValue
+                )
+            )
+            add(
+                SwitchSetting(
                     BooleanSetting.VR_EXTRA_PERFORMANCE_MODE,
                     R.string.vr_extra_performance_mode,
                     R.string.vr_extra_performance_mode_description,

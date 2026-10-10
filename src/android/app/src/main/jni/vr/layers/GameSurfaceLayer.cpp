@@ -237,6 +237,21 @@ XrVector2f GetDensityScaleFor3dsScreen(const uint32_t screenWidth,
            scaleFactor;
 }
 
+/** The lower panel as it is shown: just in front of its pose, which it shares
+ *  with the menu ribbon. The ribbon is drawn in the same plane, behind the lower
+ *  panel, with a dark translucent background over its whole area. Runtimes that
+ *  composite layers in order (Quest) show the lower panel on top; SteamVR on
+ *  Steam Frame depth-tests them, and the coplanar panels z-fought: the ribbon's
+ *  background showed through as a moving pattern of black pixels.
+ */
+Panel GetShownLowerPanel(const Panel& lowerPanel) {
+    constexpr float kOffsetFromRibbonInMeters = 0.01f;
+    Panel shown = lowerPanel;
+    shown.mWorldFromPanel.position = XrMath::Posef::Transform(
+        lowerPanel.mWorldFromPanel, XrVector3f{0.0f, 0.0f, kOffsetFromRibbonInMeters});
+    return shown;
+}
+
 } // anonymous namespace
 
 /*
@@ -408,15 +423,7 @@ void GameSurfaceLayer::FrameLowerPanel(const XrSpace&                   space,
     const int32_t width = mLowerPanel.mWidth / immersiveModeFactor;
     const int32_t height = mLowerPanel.mHeight / immersiveModeFactor - verticalBorderTex;
     layer.subImage = GetSubImage(mLowerRegion, x, y, width, height);
-    // The menu ribbon is drawn in the same plane, behind this panel, with a dark
-    // translucent background over its whole area. Runtimes that composite layers
-    // in order (Quest) show this panel on top; SteamVR on Steam Frame depth-tests
-    // them, and the coplanar panels z-fought: the ribbon's background showed
-    // through as a moving pattern of black pixels. Keep this panel just in front.
-    constexpr float kLowerPanelOffsetFromRibbonInMeters = 0.01f;
-    layer.pose = mLowerPanel.mWorldFromPanel;
-    layer.pose.position = XrMath::Posef::Transform(
-        mLowerPanel.mWorldFromPanel, XrVector3f{0.0f, 0.0f, kLowerPanelOffsetFromRibbonInMeters});
+    layer.pose = GetShownLowerPanel(mLowerPanel).mWorldFromPanel;
     const auto scale = GetDensityScaleFor3dsScreen(Core::kScreenBottomWidth,
                                                    Core::kScreenBottomHeight,
                                                    mLowerPanel.mScaleFactor, mResolutionFactor);
@@ -443,7 +450,9 @@ bool GameSurfaceLayer::GetRayIntersectionWithPanel(const XrVector3f& start,
     const XrVector2f scale =
         GetDensityScaleFor3dsScreen(Core::kScreenBottomWidth, Core::kScreenBottomHeight,
                                     mLowerPanel.mScaleFactor, mResolutionFactor);
-    return ::GetRayIntersectionWithPanel(mLowerPanel, scale, start, end, result2d, result3d);
+    // Hit-test where the panel is shown, so the cursor lands on it, not behind it.
+    return ::GetRayIntersectionWithPanel(GetShownLowerPanel(mLowerPanel), scale, start, end,
+                                         result2d, result3d);
 }
 
 void GameSurfaceLayer::SetTopPanelFromController(const XrVector3f& controllerPosition) {

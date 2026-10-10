@@ -485,6 +485,10 @@ void Config::ReadValues() {
       Settings::values.vr_extra_performance_mode_enabled.GetValue() ? XR_HIGHEST_CPU_PERF_LEVEL
       : VRSettings::CPUPrefToPerfSettingsLevel(android_config->GetInteger(
             "VR", "vr_cpu_level", XR_HIGHEST_CPU_PREFERENCE));
+    VRSettings::values.vr_show_controllers =
+        android_config->GetBoolean("VR", "vr_show_controllers", true);
+    VRSettings::values.vr_show_pointer_ray =
+        android_config->GetBoolean("VR", "vr_show_pointer_ray", true);
     VRSettings::values.vr_immersive_mode = android_config->GetInteger(
             "VR", "vr_immersive_mode", 0);
     Settings::values.vr_immersive_mode = VRSettings::values.vr_immersive_mode;

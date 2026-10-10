@@ -37,6 +37,7 @@ add_library(citra-android SHARED
     vr/XrController.cpp
     vr/vr_main.cpp
     vr/vr_settings.cpp
+    vr/layers/ControllerLayer.cpp
     vr/layers/CursorLayer.cpp
     vr/layers/GameSurfaceLayer.cpp
     vr/layers/PassthroughLayer.cpp
@@ -49,7 +50,7 @@ add_library(citra-android SHARED
 
 target_link_libraries(citra-android PRIVATE audio_core citra_common citra_core input_common network)
 target_link_libraries(citra-android PRIVATE android camera2ndk GLESv3 inih jnigraphics
-  log mediandk openxr_loader yuv)
+  json-headers lodepng log mediandk openxr_loader yuv)
 
 if (ENABLE_OPENGL)
     target_sources(citra-android PRIVATE

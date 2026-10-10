@@ -915,6 +915,10 @@
     <string name="vr_error_two_instances_title">Error: Detected Two CitraVR Instances</string>
     <string name="vr_error_two_instances_message">Detected a fatal launch bug with CitraVR.  This is a known issue. \n\nThe problem is now resolved.   Please try launching the game again. </string>
     <string name="vr_extra_performance_mode">VR Extra Performance Mode</string>
+    <string name="vr_show_controllers">Show controllers</string>
+    <string name="vr_show_controllers_description">Draws your controllers in VR, using SteamVR\'s models of them where available.</string>
+    <string name="vr_show_pointer_ray">Show pointer ray</string>
+    <string name="vr_show_pointer_ray_description">Draws a ray from the pointing controller to the cursor, to see where you point.</string>
     <string name="vr_setup_title">Welcome to CitraVR</string>
     <string name="vr_setup_message">CitraVR can set itself up with default folders: its data in %1$s and your games in %2$s, created now. Add games later from the ROM server screen.\n\nDo you want to manually configure Citra directories?</string>
     <string name="vr_setup_use_defaults">No, use default folders</string>

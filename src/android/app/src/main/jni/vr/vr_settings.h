@@ -47,6 +47,8 @@ struct Values {
     int32_t                vr_factor_3d                        = 100;
     int32_t                vr_immersive_positional_game_scaler = 0;
     std::string            vr_immersive_eye_indicator;
+    bool                   vr_show_controllers                 = true;
+    bool                   vr_show_pointer_ray                 = true;
 } extern values;
 
 } // namespace VRSettings
