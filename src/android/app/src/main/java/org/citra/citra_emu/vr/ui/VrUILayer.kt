@@ -97,6 +97,21 @@ abstract class VrUILayer(
     protected open fun onSurfaceCreated() {}
 
     /**
+     * Called from native code before the surface is destroyed. Detaches the virtual
+     * display from the surface right away, so it stops drawing into it, and tears
+     * the display down on the UI thread.
+     */
+    fun release() {
+        virtualDisplay?.surface = null
+        activity.runOnUiThread {
+            presentation?.dismiss()
+            presentation = null
+            virtualDisplay?.release()
+            virtualDisplay = null
+        }
+    }
+
+    /**
      * The window that should receive injected touch events. Defaults to the
      * presentation's window, but subclasses can redirect input to another
      * window on the same virtual display (e.g. a dialog opened on top of the

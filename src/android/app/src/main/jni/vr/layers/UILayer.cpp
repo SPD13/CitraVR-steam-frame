@@ -244,12 +244,23 @@ int32_t UILayer::Init(const jclass classObject, const jobject activityObject,
 
     BAIL_ON_COND(mSendScrollToUIMethodID == nullptr, "could not find sendScrollToUI()", -8);
 
-    BAIL_ON_ERR(CreateSwapchain(), -7);
+    BAIL_ON_ERR(CreateSwapchain(activityObject), -7);
 
     return 0;
 }
 
 void UILayer::Shutdown() {
+    // Stop the virtual display drawing into the surface before it goes away.
+    if (mVrUILayerObject != nullptr) {
+        const jmethodID releaseMethodID = mEnv->GetMethodID(mVrUILayerClass, "release", "()V");
+        if (releaseMethodID != nullptr) {
+            mEnv->CallVoidMethod(mVrUILayerObject, releaseMethodID);
+        }
+        if (mEnv->ExceptionCheck()) {
+            mEnv->ExceptionDescribe();
+            mEnv->ExceptionClear();
+        }
+    }
     mSurfaceSwapchain.reset();
     mVrUILayerClass    = nullptr;
     // These steps are not strictly necessary for app shutdown, as references are cleaned up when
@@ -258,7 +269,7 @@ void UILayer::Shutdown() {
     mVrUILayerObject = nullptr;
 }
 
-int UILayer::CreateSwapchain() {
+int UILayer::CreateSwapchain(const jobject activityObject) {
     uint32_t width = 0;
     uint32_t height = 0;
     {
@@ -286,7 +297,8 @@ int UILayer::CreateSwapchain() {
     }
     // Initialize swapchain.
     {
-        mSurfaceSwapchain = std::make_unique<SurfaceSwapchain>(mSession, mEnv, width, height);
+        mSurfaceSwapchain = std::make_unique<SurfaceSwapchain>(mSession, mEnv, activityObject, width,
+                                                               height);
 
         ALOGD("UILayer: created swapchain {}x{}", width, height);
 

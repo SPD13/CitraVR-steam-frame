@@ -37,11 +37,12 @@ public:
      *
      *  @param session a valid XrSession
      *  @param env the JNI environment of the calling thread
+     *  @param activityObject the VR activity, used to find the app's Java classes
      *  @param width width of the swapchain (and surface) in pixels
      *  @param height height of the swapchain (and surface) in pixels
      */
-    SurfaceSwapchain(const XrSession& session, JNIEnv* env, const uint32_t width,
-                     const uint32_t height);
+    SurfaceSwapchain(const XrSession& session, JNIEnv* env, jobject activityObject,
+                     const uint32_t width, const uint32_t height);
     ~SurfaceSwapchain();
 
     SurfaceSwapchain(const SurfaceSwapchain&) = delete;
@@ -73,7 +74,7 @@ public:
 
 private:
     void CreateAndroidSurfaceSwapchain(const XrSession& session);
-    void CreateSurfaceTextureSwapchain(const XrSession& session);
+    void CreateSurfaceTextureSwapchain(const XrSession& session, jobject activityObject);
     void CreateCopyResources();
     void ClearSwapchainImage();
     void CopySurfaceTextureToSwapchain(const float transformMatrix[16]);
@@ -88,11 +89,14 @@ private:
     // SurfaceTexture path only.
 
     jobject mSurfaceTexture = nullptr;
+    jobject mFrameListener = nullptr; // org.citra.citra_emu.vr.utils.SurfaceTextureFrameListener
     jfloatArray mTransformMatrixArray = nullptr;
     jmethodID mUpdateTexImageMethodID = nullptr;
     jmethodID mGetTransformMatrixMethodID = nullptr;
-    jmethodID mGetTimestampMethodID = nullptr;
-    jlong mLastFrameTimestamp = -1;
+    jmethodID mGetFrameCountMethodID = nullptr;
+    // Frames latched with updateTexImage(), compared against the listener's count.
+    jlong mLatchedFrameCount = 0;
+    bool mHasCopiedFrame = false;
 
     // Whether the swapchain stores sRGB-encoded values, in which case the copy
     // decodes the (sRGB-encoded) Android content to linear and the GPU encodes it

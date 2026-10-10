@@ -14,6 +14,7 @@ License     :   Licensed under GPLv3 or any later version.
 #include "SurfaceSwapchain.h"
 
 #include "utils/Common.h"
+#include "utils/JniUtils.h"
 #include "utils/LogUtils.h"
 
 #include <GLES2/gl2ext.h> // GL_TEXTURE_EXTERNAL_OES
@@ -129,8 +130,8 @@ int64_t ChooseSwapchainFormat(const XrSession& session) {
 
 } // anonymous namespace
 
-SurfaceSwapchain::SurfaceSwapchain(const XrSession& session, JNIEnv* env, const uint32_t width,
-                                   const uint32_t height)
+SurfaceSwapchain::SurfaceSwapchain(const XrSession& session, JNIEnv* env, jobject activityObject,
+                                   const uint32_t width, const uint32_t height)
     : mIsAndroidSurfaceSwapchain(OpenXr::GetExtensions().mAndroidSurfaceSwapchain &&
                                  OpenXr::GetExtensions().mCompositionLayerImageLayout),
       mEnv(env) {
@@ -139,7 +140,7 @@ SurfaceSwapchain::SurfaceSwapchain(const XrSession& session, JNIEnv* env, const 
     if (mIsAndroidSurfaceSwapchain) {
         CreateAndroidSurfaceSwapchain(session);
     } else {
-        CreateSurfaceTextureSwapchain(session);
+        CreateSurfaceTextureSwapchain(session, activityObject);
     }
     ALOGI("SurfaceSwapchain: created {}x{} {} swapchain", width, height,
           mIsAndroidSurfaceSwapchain ? "surface-backed" : "SurfaceTexture-fed");
@@ -179,7 +180,8 @@ void SurfaceSwapchain::CreateAndroidSurfaceSwapchain(const XrSession& session) {
     OXR(pfnCreateSwapchainAndroidSurfaceKHR(session, &xsci, &mSwapchain.mHandle, &mSurface));
 }
 
-void SurfaceSwapchain::CreateSurfaceTextureSwapchain(const XrSession& session) {
+void SurfaceSwapchain::CreateSurfaceTextureSwapchain(const XrSession& session,
+                                                     jobject activityObject) {
     // Swapchain
     {
         const int64_t format = ChooseSwapchainFormat(session);
@@ -219,7 +221,6 @@ void SurfaceSwapchain::CreateSurfaceTextureSwapchain(const XrSession& session) {
         mUpdateTexImageMethodID = mEnv->GetMethodID(surfaceTextureClass, "updateTexImage", "()V");
         mGetTransformMatrixMethodID =
             mEnv->GetMethodID(surfaceTextureClass, "getTransformMatrix", "([F)V");
-        mGetTimestampMethodID = mEnv->GetMethodID(surfaceTextureClass, "getTimestamp", "()J");
         CheckJniException(mEnv, "SurfaceTexture method lookup");
 
         jobject surfaceTexture = mEnv->NewObject(surfaceTextureClass, surfaceTextureConstructor,
@@ -230,6 +231,24 @@ void SurfaceSwapchain::CreateSurfaceTextureSwapchain(const XrSession& session) {
                              static_cast<jint>(mSwapchain.mHeight));
         CheckJniException(mEnv, "SurfaceTexture.setDefaultBufferSize()");
         mSurfaceTexture = mEnv->NewGlobalRef(surfaceTexture);
+
+        // An app class: FindClass() can't see it from this thread, so look it up
+        // through the activity's class loader.
+        jclass frameListenerClass = JniUtils::GetGlobalClassReference(
+            mEnv, activityObject, "org/citra/citra_emu/vr/utils/SurfaceTextureFrameListener");
+        if (frameListenerClass == nullptr) {
+            FAIL("SurfaceSwapchain: SurfaceTextureFrameListener class not found");
+        }
+        const jmethodID frameListenerConstructor = mEnv->GetMethodID(
+            frameListenerClass, "<init>", "(Landroid/graphics/SurfaceTexture;)V");
+        mGetFrameCountMethodID = mEnv->GetMethodID(frameListenerClass, "getFrameCount", "()J");
+        CheckJniException(mEnv, "SurfaceTextureFrameListener method lookup");
+        jobject frameListener =
+            mEnv->NewObject(frameListenerClass, frameListenerConstructor, surfaceTexture);
+        CheckJniException(mEnv, "new SurfaceTextureFrameListener()");
+        mFrameListener = mEnv->NewGlobalRef(frameListener);
+        mEnv->DeleteLocalRef(frameListener);
+        mEnv->DeleteGlobalRef(frameListenerClass);
 
         jclass surfaceClass = mEnv->FindClass("android/view/Surface");
         const jmethodID surfaceConstructor =
@@ -319,29 +338,34 @@ void SurfaceSwapchain::Update() {
         return;
     }
 
-    // Latch the newest buffer Android queued, if any.
-    mEnv->CallVoidMethod(mSurfaceTexture, mUpdateTexImageMethodID);
-    if (mEnv->ExceptionCheck()) {
-        mEnv->ExceptionDescribe();
-        mEnv->ExceptionClear();
-        ALOGE("SurfaceSwapchain: exception in SurfaceTexture.updateTexImage()");
+    // Latch every buffer Android queued since the last call (each updateTexImage()
+    // latches one), then copy the newest. Frames are counted by a listener because
+    // buffer timestamps are not set by every producer.
+    const jlong frameCount = mEnv->CallLongMethod(mFrameListener, mGetFrameCountMethodID);
+    if (frameCount == mLatchedFrameCount) {
         return;
     }
-
-    // Only copy when a new buffer was latched. The timestamp stays 0 until
-    // Android queues its first buffer (both of our producers, EGL window surfaces
-    // and virtual displays, timestamp every buffer).
-    const jlong timestamp = mEnv->CallLongMethod(mSurfaceTexture, mGetTimestampMethodID);
-    if (timestamp == 0 || timestamp == mLastFrameTimestamp) {
-        return;
+    while (mLatchedFrameCount < frameCount) {
+        mEnv->CallVoidMethod(mSurfaceTexture, mUpdateTexImageMethodID);
+        if (mEnv->ExceptionCheck()) {
+            mEnv->ExceptionDescribe();
+            mEnv->ExceptionClear();
+            ALOGE("SurfaceSwapchain: exception in SurfaceTexture.updateTexImage()");
+            return;
+        }
+        mLatchedFrameCount++;
     }
-    mLastFrameTimestamp = timestamp;
 
     float transformMatrix[16];
     mEnv->CallVoidMethod(mSurfaceTexture, mGetTransformMatrixMethodID, mTransformMatrixArray);
     mEnv->GetFloatArrayRegion(mTransformMatrixArray, 0, 16, transformMatrix);
 
     CopySurfaceTextureToSwapchain(transformMatrix);
+    if (!mHasCopiedFrame) {
+        mHasCopiedFrame = true;
+        ALOGI("SurfaceSwapchain: first frame copied into the {}x{} swapchain", mSwapchain.mWidth,
+              mSwapchain.mHeight);
+    }
 }
 
 void SurfaceSwapchain::CopySurfaceTextureToSwapchain(const float transformMatrix[16]) {
@@ -407,6 +431,10 @@ void SurfaceSwapchain::Shutdown() {
         mEnv->DeleteLocalRef(surfaceTextureClass);
         mEnv->DeleteGlobalRef(mSurfaceTexture);
         mSurfaceTexture = nullptr;
+    }
+    if (mFrameListener != nullptr) {
+        mEnv->DeleteGlobalRef(mFrameListener);
+        mFrameListener = nullptr;
     }
     if (mTransformMatrixArray != nullptr) {
         mEnv->DeleteGlobalRef(mTransformMatrixArray);

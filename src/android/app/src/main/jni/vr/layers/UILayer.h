@@ -156,7 +156,7 @@ private:
     /** Creates the swapchain.
      * @return 0 on success, error code less than 0 on failure.
      */
-    int CreateSwapchain();
+    int CreateSwapchain(const jobject activityObject);
 
     const XrSession mSession;
     std::unique_ptr<SurfaceSwapchain> mSurfaceSwapchain;

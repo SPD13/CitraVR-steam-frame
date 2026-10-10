@@ -197,7 +197,7 @@ private:
 
     /** Creates the swapchain.
      */
-    void CreateSwapchain();
+    void CreateSwapchain(const jobject activityObject);
 
     static constexpr uint32_t SURFACE_WIDTH_UNSCALED =
         NUM_EYES * Core::kScreenTopWidth;

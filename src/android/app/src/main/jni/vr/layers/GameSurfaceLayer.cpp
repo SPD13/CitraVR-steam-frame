@@ -493,7 +493,7 @@ int32_t GameSurfaceLayer::Init(const XrSession& session, const jobject activityO
     mVrGameSurfaceClass =
         JniUtils::GetGlobalClassReference(mEnv, activityObject, gameSurfaceClassName.c_str());
     BAIL_ON_COND(mVrGameSurfaceClass == nullptr, "No java Game Surface Layer class", -1);
-    CreateSwapchain();
+    CreateSwapchain(activityObject);
     SetSurface(activityObject);
     return 0;
 }
@@ -504,14 +504,14 @@ void GameSurfaceLayer::Shutdown() {
     mEnv->DeleteGlobalRef(mVrGameSurfaceClass);
 }
 
-void GameSurfaceLayer::CreateSwapchain() {
+void GameSurfaceLayer::CreateSwapchain(const jobject activityObject) {
     const uint32_t width = SURFACE_WIDTH_UNSCALED * mResolutionFactor;
     const uint32_t height = SURFACE_HEIGHT_UNSCALED * mResolutionFactor;
     ALOGI("GameSurfaceLayer: Creating swapchain of size {}x{} ({}x{} with "
           "resolution factor {}x)",
           width, height, SURFACE_WIDTH_UNSCALED, SURFACE_HEIGHT_UNSCALED, mResolutionFactor);
 
-    mSurfaceSwapchain = std::make_unique<SurfaceSwapchain>(mSession, mEnv, width, height);
+    mSurfaceSwapchain = std::make_unique<SurfaceSwapchain>(mSession, mEnv, activityObject, width, height);
     mSurface = mSurfaceSwapchain->GetSurface();
 }
 
