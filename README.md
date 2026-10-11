@@ -192,6 +192,12 @@ For development, you can sideload the APK into **Lepton Development** instead: s
 
 Every release must be signed with this same key, or it won't install as an update over the previous one where Android checks it (Lepton Development, Quest; the Steam library entry reinstalls at each launch). The key (`~/.config/citravr-steam-frame/release.keystore`, with its password in the macOS Keychain item `citravr-steam-frame-release-key`) is never committed: keep a backup of both outside this computer, as described in [STEAM_FRAME.md](STEAM_FRAME.md#release-key).
 
+---
+
+## Original CitraVR README
+
+> **Everything below is the original upstream README** from [amwatson/CitraVR](https://github.com/amwatson/CitraVR). It describes the Quest version, and its releases, guides and support links lead to the upstream project. Only the modification notice under [License](#license) was added.
+
 ## Introduction
 I originally created this project to a be a proof-of-concept of some techniques XR developers were curious about. 
 Specifically:
@@ -221,7 +227,6 @@ CitraVR supports the following devices:
 - Meta Quest Pro
 - Meta Quest 3
 - Meta Quest 3S
-- Steam Frame (experimental, see [STEAM_FRAME.md](STEAM_FRAME.md))
 
 ### Games
 For a full list of games that work well on CitraVR, please visit the [CitraVR Game Compatability List](https://docs.google.com/spreadsheets/d/1viN8_MWO1HW9QXlkT-TdCGQbH1g660mKsIp1ZTARdho/edit?usp=sharing)
