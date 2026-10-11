@@ -437,6 +437,11 @@ private:
         mControllerDiagramLayer = std::make_unique<ControllerDiagramLayer>(
             XrPosef{XrQuaternionf{0, 0.70710678f, 0, 0.70710678f}, XrVector3f{-1.3f, -0.1f, 0}},
             jni, mActivityObject, gOpenXr->mSession);
+        // Opposite it, 90 degrees to the right: the 3DS-style button layout, to compare.
+        mButtonLayoutLayer = std::make_unique<UILayer>(
+            VR::JniGlobalRef::gVrButtonLayoutLayerClass, XrVector3f{1.3f, -0.1f, 0},
+            XrQuaternionf{0, -0.70710678f, 0, 0.70710678f}, jni, mActivityObject,
+            gOpenXr->mSession);
 
         // Create the cursor layer.
         mCursorLayer = std::make_unique<CursorLayer>(gOpenXr->mSession);
@@ -563,6 +568,7 @@ private:
         mErrorMessageLayer->UpdateSurface();
         mGameListLayer->UpdateSurface();
         mControllerDiagramLayer->UpdateSurface();
+        mButtonLayoutLayer->UpdateSurface();
         mControllerDiagramLayer->UpdateMapping(VRSettings::values.vr_button_map);
 
         uint32_t                        layerCount = 0;
@@ -598,8 +604,13 @@ private:
             }
 
             if (showUIRibbon) { mRibbonLayer->Frame(gOpenXr->mLocalSpace, layers, layerCount); }
-            if (VRSettings::values.vr_show_controller_diagram && layerCount < layers.size()) {
-                mControllerDiagramLayer->Frame(gOpenXr->mLocalSpace, layers, layerCount);
+            if (VRSettings::values.vr_show_controller_diagram) {
+                if (layerCount < layers.size()) {
+                    mControllerDiagramLayer->Frame(gOpenXr->mLocalSpace, layers, layerCount);
+                }
+                if (layerCount < layers.size()) {
+                    mButtonLayoutLayer->Frame(gOpenXr->mLocalSpace, layers, layerCount);
+                }
             }
             const bool showLowerPanel = visibility.mShowLowerPanel;
             if (showLowerPanel) {
@@ -1676,6 +1687,7 @@ private:
 
     std::unique_ptr<CursorLayer> mCursorLayer;
     std::unique_ptr<ControllerDiagramLayer> mControllerDiagramLayer;
+    std::unique_ptr<UILayer> mButtonLayoutLayer;
     std::unique_ptr<ControllerLayer> mControllerLayer;
     // The 3DS buttons (Android key codes) last sent to the emulated gamepad, and
     // whether they were held; see HandleInput().

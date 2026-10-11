@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The 3DS-style button layout shown in VR, opposite the controller diagram
+     (VrButtonLayoutLayer). Sizes are in pixels of the panel (160 dpi displays). -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:background="@android:color/black"
+    android:orientation="vertical"
+    android:paddingStart="40dp"
+    android:paddingTop="24dp"
+    android:paddingEnd="40dp"
+    android:paddingBottom="24dp">
+
+    <TextView
+        android:layout_width="1400dp"
+        android:layout_height="wrap_content"
+        android:gravity="center_horizontal"
+        android:text="@string/vr_3ds_layout_title"
+        android:textColor="@android:color/white"
+        android:textSize="32sp"
+        android:textStyle="bold" />
+
+    <ImageView
+        android:layout_width="1400dp"
+        android:layout_height="760dp"
+        android:contentDescription="@null"
+        android:scaleType="fitXY"
+        android:src="@drawable/vr_3ds_layout" />
+</LinearLayout>

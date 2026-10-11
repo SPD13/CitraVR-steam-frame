@@ -9,6 +9,7 @@ extern jclass gVrErrorMessageLayerClass;
 extern jclass gVrRibbonLayerClass;
 extern jclass gVrGameListLayerClass;
 extern jclass gVrControllerDiagramLayerClass;
+extern jclass gVrButtonLayoutLayerClass;
 
 } // namespace JniGlobalRef
 

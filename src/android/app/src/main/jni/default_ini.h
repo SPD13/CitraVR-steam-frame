@@ -554,7 +554,8 @@ vr_show_controllers =
 # true (default): On, false: Off
 vr_show_pointer_ray =
 
-# Shows the controllers, labelled with the current mapping, to the left of the game.
+# Shows the controllers, labelled with the current mapping, to the left of the game,
+# and the 3DS button layout to the right.
 # true (default): On, false: Off
 vr_show_controller_diagram =
 

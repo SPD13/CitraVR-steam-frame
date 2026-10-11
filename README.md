@@ -70,7 +70,8 @@ Passthrough and the immersive modes haven't been checked on the headset yet. The
 **Controller diagram in VR**
 - **Where:** a panel 90° to the left of the game shows the Steam Frame controllers: turn your head to check which button does what, without leaving the game.
 - **Live labels:** the labels come from the mapping in use, per-game mapping included, and change as soon as you remap a button, also from the in-game settings.
-- **Setting:** **Show controller diagram** in the VR settings (on by default) hides it, right away.
+- **3DS layout:** a panel 90° to the right shows the 3DS-style button layout, to compare.
+- **Setting:** **Show controller diagram** in the VR settings (on by default) hides both panels, right away.
 
 **One-question setup and folders that survive updates**
 - **First launch:** when CitraVR has all-files access (always on Steam Frame), first launch asks a single question: *Do you want to manually configure Citra directories?* Answering **No** creates `/storage/emulated/0/CitraVR` (data) and `/storage/emulated/0/CitraVR/games` (games) and goes straight to the game list.
@@ -108,9 +109,9 @@ Passthrough and the immersive modes haven't been checked on the headset yet. The
 
 *Controller drawing: Valve, from the Steamworks documentation, relabelled with CitraVR's defaults (`steam-frame/make_controls_image.py`).*
 
-![A DS-style handheld with its buttons labelled: X at the top, A on the right, B at the bottom, Y on the left](https://blog.omgmog.net/images/2026-06/rg-ds/hardware.png)
+![A DS-style handheld with its buttons labelled: X at the top, A on the right, B at the bottom, Y on the left](docs/images/3ds-button-layout.png)
 
-*The 3DS-style button layout, for comparison: X at the top, A on the right, B at the bottom and Y on the left, as on a 3DS. (This drawing is of the Anbernic RG DS, a DS-style handheld, from [omgmog's blog](https://blog.omgmog.net/), so its other labels, such as L2/R2 or the second joystick, don't match the 3DS.)*
+*The 3DS-style button layout, for comparison: X at the top, A on the right, B at the bottom and Y on the left, as on a 3DS. In VR, this drawing is shown to the right of the game, opposite the controller diagram. (It's of the Anbernic RG DS, a DS-style handheld, from [omgmog's blog](https://blog.omgmog.net/), with its colours inverted, so its other labels, such as L2/R2 or the second joystick, don't match the 3DS.)*
 
 | Steam Frame | 3DS / CitraVR |
 |---|---|
@@ -130,7 +131,7 @@ All of this can be changed in **Settings → VR → Controller mapping**, also i
 
 ### Controller diagram in VR
 
-In VR, turn your head to the left: a panel shows the controllers labelled with the current mapping, and it follows any change you make (per game too). **Show controller diagram** in the VR settings hides it.
+In VR, turn your head to the left: a panel shows the controllers labelled with the current mapping, and it follows any change you make (per game too). Turn your head to the right for the 3DS-style button layout. **Show controller diagram** in the VR settings hides both.
 
 ![The controller diagram panel in VR, labelled with the default mapping](docs/images/vr-controller-diagram.png)
 
