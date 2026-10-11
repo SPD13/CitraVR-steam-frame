@@ -11,11 +11,13 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.Process
 import android.os.SystemClock
 import android.view.Display
 import android.view.View
 import org.citra.citra_emu.NativeLibrary
 import org.citra.citra_emu.activities.EmulationActivity
+import org.citra.citra_emu.features.romserver.RomServerService
 import org.citra.citra_emu.features.settings.ui.SettingsActivity
 import org.citra.citra_emu.features.settings.utils.SettingsFile
 import org.citra.citra_emu.fragments.EmulationFragment
@@ -27,6 +29,7 @@ import org.citra.citra_emu.utils.EmulationMenuSettings
 import org.citra.citra_emu.utils.Log
 import org.citra.citra_emu.vr.ui.VrGameListLayer
 import org.citra.citra_emu.vr.utils.VRUtils
+import org.citra.citra_emu.vr.utils.VrControlCapture
 import kotlin.system.exitProcess
 
 
@@ -52,12 +55,16 @@ class VrActivity : EmulationActivity() {
         }
         hasRun = true
         currentActivity = this
+        VrControlCapture.isAvailable = true
         NativeLibrary.prepareGameSettings(intent.getLongExtra(EXTRA_SELECTED_TITLE_ID, 0L))
         mHandle = nativeOnCreate()
     }
 
     override fun onDestroy() {
        Log.info("VR [Java] onDestroy");
+        if (currentActivity == this) {
+            VrControlCapture.isAvailable = false
+        }
         currentActivity = null
         if (mHandle != 0L) {
             nativeOnDestroy(mHandle)
@@ -98,6 +105,11 @@ class VrActivity : EmulationActivity() {
         if (!isFinishing) {
             finish()
         }
+    }
+
+    // Called from native code while the settings wait for a button to map.
+    fun onVrControlPressed(input: Int) {
+        VrControlCapture.onControlPressed(input)
     }
 
     fun forwardVRInput(keycode: Int, isPressed: Boolean) {
@@ -160,6 +172,29 @@ class VrActivity : EmulationActivity() {
         finish()
         val relaunchMainIntent = Intent(this, MainActivity::class.java)
         startActivity(relaunchMainIntent)
+    }
+
+    /**
+     * Closes CitraVR altogether (from the VR game list): the VR session, the 2D
+     * window and the ROM upload server, whose foreground service would otherwise
+     * keep the app running. The server's setting is kept, so it starts with the
+     * app next time.
+     */
+    fun quitCitra() {
+        if (isQuitting) return
+        isQuitting = true
+        Log.info("VR [Java] quitting CitraVR")
+        // As in exitToCitraWindow(): the core is never stopped on this path.
+        NativeLibrary.saveDiskShaderCaches()
+        stopService(Intent(this, RomServerService::class.java))
+        val activityManager = getSystemService(ActivityManager::class.java)
+        activityManager.appTasks.forEach { it.finishAndRemoveTask() }
+        // End the app's other processes (the 2D window's); this one ends in
+        // onDestroy(), after the VR session is torn down.
+        activityManager.runningAppProcesses
+            ?.filter { it.pid != Process.myPid() }
+            ?.forEach { Process.killProcess(it.pid) }
+        finishAndRemoveTask()
     }
 
     /**

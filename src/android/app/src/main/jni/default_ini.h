@@ -554,6 +554,36 @@ vr_show_controllers =
 # true (default): On, false: Off
 vr_show_pointer_ray =
 
+# Controller mapping: the 3DS button of each control, as an Android key code.
+# 0: None, 96: A, 97: B, 99: X, 100: Y, 102: L, 103: R, 104: ZL, 105: ZR,
+# 108: Start, 109: Select, 110: Home, 19: D-pad up, 20: D-pad down, 21: D-pad left,
+# 22: D-pad right, 1000: show/hide the menu bar (not a 3DS button). Defaults on
+# Steam Frame: the Nintendo layout on the face buttons (A: B, B: A, X: Y, Y: X),
+# the d-pad on the d-pad, L/R on the bumpers, Select/Start on the stick clicks,
+# ZL/ZR on the triggers, Home on View and the menu bar on Menu. Other headsets:
+# L/R on the grips and the menu bar on the left Menu button.
+vr_map_a =
+vr_map_b =
+vr_map_x =
+vr_map_y =
+vr_map_dpad_up =
+vr_map_dpad_down =
+vr_map_dpad_left =
+vr_map_dpad_right =
+vr_map_left_bumper =
+vr_map_right_bumper =
+vr_map_left_grip =
+vr_map_right_grip =
+vr_map_left_stick_click =
+vr_map_right_stick_click =
+# Triggers press their 3DS button only when pulled while not pointing at a panel
+# (otherwise they click).
+vr_map_left_trigger =
+vr_map_right_trigger =
+# Without a button for the menu bar (1000), it stays shown.
+vr_map_left_view =
+vr_map_right_menu =
+
 # OpenXR CPU performance level. Defaults to 4 (highest) in CitraVR.
 # 1: Power savings, 2: Sustained low, 3: Sustained high, 4: Boost
 vr_cpu_level =

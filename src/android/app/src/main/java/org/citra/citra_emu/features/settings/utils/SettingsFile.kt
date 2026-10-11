@@ -146,20 +146,28 @@ object SettingsFile {
         }
     }
 
-    fun saveFile(fileName: String, setting: AbstractSetting) {
+    fun saveFile(fileName: String, setting: AbstractSetting) =
+        saveFile(fileName, listOf(setting))
+
+    /** Writes these settings' current values to the file, leaving the rest of it as is. */
+    fun saveFile(fileName: String, settings: Collection<AbstractSetting>): Boolean {
         val ini = getSettingsFile(fileName)
         try {
             val context: Context = CitraApplication.appContext
             val inputStream = context.contentResolver.openInputStream(ini.uri)
             val writer = Wini(inputStream)
-            writer.put(setting.section, setting.key, setting.valueAsString)
+            settings.forEach { setting ->
+                writer.put(setting.section, setting.key, setting.valueAsString)
+            }
             inputStream!!.close()
             val outputStream = context.contentResolver.openOutputStream(ini.uri, "wt")
             writer.store(outputStream)
             outputStream!!.flush()
             outputStream.close()
+            return true
         } catch (e: Exception) {
             Log.error("[SettingsFile] File not found: $fileName.ini.vr: ${e.message}")
+            return false
         }
     }
 
@@ -189,11 +197,26 @@ object SettingsFile {
         ?: throw IllegalStateException("Cannot create config directory")
 
         // Try to find the file, if it doesn't exist, create it.
-        return actualConfigDirectory.findFile("$fileName.$ext")
+        return findConfigFile(actualConfigDirectory, "$fileName.$ext")
             // ExternalStorageProvider appends `.txt` for text/plain documents,
             // which makes native config lookup miss files such as per_game.ini.vr.
-            ?: actualConfigDirectory.createFile("application/octet-stream", "$fileName.$ext")
+            ?: FileUtil.createDocumentFile(
+                actualConfigDirectory,
+                "application/octet-stream",
+                "$fileName.$ext"
+            )
             ?: throw IllegalStateException("Cannot create file $fileName.$ext")
+    }
+
+    /**
+     * Finds a file in the config directory. Earlier builds created files in
+     * plain-path directories with a ".bin" suffix (see
+     * FileUtil.createDocumentFile()); such a file is renamed to its real name.
+     */
+    fun findConfigFile(configDirectory: DocumentFile, name: String): DocumentFile? {
+        configDirectory.findFile(name)?.let { return it }
+        val stranded = configDirectory.findFile("$name.bin") ?: return null
+        return if (stranded.renameTo(name)) configDirectory.findFile(name) else stranded
     }
 
     private fun getCustomGameSettingsFile(gameId: String): DocumentFile {

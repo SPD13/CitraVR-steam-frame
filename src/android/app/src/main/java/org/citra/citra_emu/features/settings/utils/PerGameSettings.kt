@@ -51,7 +51,25 @@ object PerGameSettings {
         Definition(setting = BooleanSetting.ASYNC_SHADERS, restartRequired = true),
         Definition(setting = BooleanSetting.NEW_3DS, restartRequired = true),
         Definition(setting = IntSetting.VR_IMMERSIVE_MODE, restartRequired = true),
-        Definition(setting = IntSetting.STEREOSCOPIC_3D_DEPTH, restartRequired = false)
+        Definition(setting = IntSetting.STEREOSCOPIC_3D_DEPTH, restartRequired = false),
+        Definition(setting = IntSetting.VR_MAP_A, restartRequired = false),
+        Definition(setting = IntSetting.VR_MAP_B, restartRequired = false),
+        Definition(setting = IntSetting.VR_MAP_X, restartRequired = false),
+        Definition(setting = IntSetting.VR_MAP_Y, restartRequired = false),
+        Definition(setting = IntSetting.VR_MAP_DPAD_UP, restartRequired = false),
+        Definition(setting = IntSetting.VR_MAP_DPAD_DOWN, restartRequired = false),
+        Definition(setting = IntSetting.VR_MAP_DPAD_LEFT, restartRequired = false),
+        Definition(setting = IntSetting.VR_MAP_DPAD_RIGHT, restartRequired = false),
+        Definition(setting = IntSetting.VR_MAP_LEFT_BUMPER, restartRequired = false),
+        Definition(setting = IntSetting.VR_MAP_RIGHT_BUMPER, restartRequired = false),
+        Definition(setting = IntSetting.VR_MAP_LEFT_GRIP, restartRequired = false),
+        Definition(setting = IntSetting.VR_MAP_RIGHT_GRIP, restartRequired = false),
+        Definition(setting = IntSetting.VR_MAP_LEFT_STICK_CLICK, restartRequired = false),
+        Definition(setting = IntSetting.VR_MAP_RIGHT_STICK_CLICK, restartRequired = false),
+        Definition(setting = IntSetting.VR_MAP_LEFT_TRIGGER, restartRequired = false),
+        Definition(setting = IntSetting.VR_MAP_RIGHT_TRIGGER, restartRequired = false),
+        Definition(setting = IntSetting.VR_MAP_LEFT_VIEW, restartRequired = false),
+        Definition(setting = IntSetting.VR_MAP_RIGHT_MENU, restartRequired = false)
     )
 
     private val definitionsByKey = definitions.associateBy { it.key }
@@ -119,6 +137,13 @@ object PerGameSettings {
         ini.remove("$titleId.user")
     }
 
+    /** Removes the game's own values for these settings, so the global ones apply. */
+    fun clearUserValues(titleId: String, keys: Collection<String>): Boolean =
+        updateIni(::findExistingFile) { ini ->
+            val section = ini["$titleId.user"] ?: return@updateIni
+            keys.forEach { key -> section.remove(key) }
+        }
+
     private fun updateIni(getFile: () -> DocumentFile?, update: (Wini) -> Unit): Boolean {
         return try {
             val file = getFile() ?: return true
@@ -142,7 +167,8 @@ object PerGameSettings {
             CitraApplication.appContext,
             Uri.parse(userDirectory)
         ) ?: return null
-        return root.findFile("config")?.findFile("$FILE_NAME.ini.vr")
+        val configDirectory = root.findFile("config") ?: return null
+        return SettingsFile.findConfigFile(configDirectory, "$FILE_NAME.ini.vr")
     }
 
     private fun readIni(file: DocumentFile): Wini? = try {

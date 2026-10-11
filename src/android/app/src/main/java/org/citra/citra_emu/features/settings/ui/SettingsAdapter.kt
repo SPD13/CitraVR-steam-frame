@@ -54,6 +54,8 @@ import org.citra.citra_emu.features.settings.model.IntSetting
 import org.citra.citra_emu.features.settings.model.view.DateTimeSetting
 import org.citra.citra_emu.features.settings.model.view.InputBindingSetting
 import org.citra.citra_emu.features.settings.model.view.MultiChoiceSetting
+import org.citra.citra_emu.features.settings.model.view.VrButtonMappingSetting
+import org.citra.citra_emu.vr.utils.VrControlCapture
 import org.citra.citra_emu.features.settings.model.view.SettingsItem
 import org.citra.citra_emu.features.settings.model.view.SingleChoiceSetting
 import org.citra.citra_emu.features.settings.model.view.SliderSetting
@@ -273,6 +275,10 @@ class SettingsAdapter(private val fragmentView: SettingsFragmentView, public val
     }
 
     private fun onSingleChoiceClick(item: SingleChoiceSetting) {
+        if (item is VrButtonMappingSetting && VrControlCapture.isAvailable) {
+            onVrButtonMappingClick(item)
+            return
+        }
         clickedItem = item
         val value = getSelectionForSingleChoiceValue(item)
         dialog = showDialog(
@@ -280,6 +286,33 @@ class SettingsAdapter(private val fragmentView: SettingsFragmentView, public val
                 .setTitle(item.nameId)
                 .setSingleChoiceItems(item.choicesId, value, this)
         )
+    }
+
+    // In VR: maps the 3DS button to the next controller button pressed.
+    private fun onVrButtonMappingClick(item: VrButtonMappingSetting) {
+        dialog = showDialog(
+            MaterialAlertDialogBuilder(context)
+                .setTitle(item.nameId)
+                .setMessage(R.string.vr_controller_mapping_press_button)
+                .setPositiveButton(R.string.vr_input_none) { _: DialogInterface, _: Int ->
+                    applyVrButtonMapping(item, VrButtonMappingSetting.NO_INPUT)
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .setOnDismissListener { VrControlCapture.stop() }
+        )
+        VrControlCapture.start { input ->
+            applyVrButtonMapping(item, input)
+            closeDialog()
+        }
+    }
+
+    private fun applyVrButtonMapping(item: VrButtonMappingSetting, input: Int) {
+        val changedSettings = item.mapInput(input)
+        changedSettings.forEach { fragmentView?.putSetting(it) }
+        if (changedSettings.isNotEmpty()) {
+            fragmentView?.onSettingChanged()
+        }
+        fragmentView.loadSettingsList()
     }
 
     fun showMessageDialog(@StringRes titleId: Int, @StringRes messageId: Int) {
@@ -533,6 +566,12 @@ class SettingsAdapter(private val fragmentView: SettingsFragmentView, public val
     }
 
     override fun onClick(dialog: DialogInterface, which: Int) {
+        val mappingSetting = clickedItem as? VrButtonMappingSetting
+        if (mappingSetting != null) {
+            applyVrButtonMapping(mappingSetting, getValueForSingleChoiceSelection(mappingSetting, which))
+            closeDialog()
+            return
+        }
         when (clickedItem) {
             is SingleChoiceSetting -> {
                 val scSetting = clickedItem as? SingleChoiceSetting

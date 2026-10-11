@@ -34,6 +34,7 @@ License     :   Licensed under GPLv3 or any later version.
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <map>
 #include <thread>
 #include <vector>
 
@@ -92,20 +93,6 @@ void ForwardButtonStateChangeToCitra(JNIEnv* jni, jobject activityObject,
                                      const XrBool32 xrButtonState) {
     jni->CallVoidMethod(activityObject, forwardVRInputMethodID, androidButtonCode,
                         xrButtonState != XR_FALSE);
-}
-
-bool ShouldForwardButtonState(const XrActionStateBoolean& actionState) {
-    return actionState.changedSinceLastSync || actionState.currentState == XR_TRUE;
-}
-
-void ForwardButtonStateIfNeeded(JNIEnv* jni, jobject activityObject,
-                                jmethodID forwardVRInputMethodID, const int androidButtonCode,
-                                const XrActionStateBoolean& actionState, const char* buttonName) {
-    if (ShouldForwardButtonState(actionState)) {
-        ALOG_INPUT_VERBOSE("Forwarding {} button state: {}", buttonName, actionState.currentState);
-        ForwardButtonStateChangeToCitra(jni, activityObject, forwardVRInputMethodID,
-                                        androidButtonCode, actionState.currentState);
-    }
 }
 
 // Whether the cursor is hovering over the settings menu panel. Set during the
@@ -348,6 +335,7 @@ public:
 
                 // Update non-tracking-dependent-state.
                 mInputStateFrame.SyncButtonsAndThumbSticks(gOpenXr->mSession, mInputStateStatic);
+                UpdateTriggerRoles(appState);
                 HandleInput(jni, mInputStateFrame, appState);
 
                 Frame(jni, appState);
@@ -458,6 +446,9 @@ private:
         mForwardVRInputMethodID =
             jni->GetMethodID(jni->GetObjectClass(mActivityObject), "forwardVRInput", "(IZ)V");
         if (mForwardVRInputMethodID == nullptr) { FAIL("could not get forwardVRInputMethodID"); }
+        mOnVrControlPressedMethodID =
+            jni->GetMethodID(jni->GetObjectClass(mActivityObject), "onVrControlPressed", "(I)V");
+        if (mOnVrControlPressedMethodID == nullptr) { FAIL("could not get onVrControlPressed"); }
         mForwardVRJoystickMethodID =
             jni->GetMethodID(jni->GetObjectClass(mActivityObject), "forwardVRJoystick", "(FFI)V");
         if (mForwardVRJoystickMethodID == nullptr) {
@@ -534,10 +525,9 @@ private:
 
         // enable toggle when menu is set to main. Otherwise, always on (super immersive disabled).
         // The game list replaces the game screens and menu bar while it's shown.
-        const bool showGameList = appState.mShouldShowGameList;
-        const bool showUIRibbon = !showGameList &&
-                                  (appState.mLowerMenuType == LowerMenuType::POSITIONAL_MENU ||
-                                   appState.mIsLowerMenuToggledOn);
+        const PanelVisibility visibility = GetPanelVisibility(appState);
+        const bool showGameList = visibility.mShowGameList;
+        const bool showUIRibbon = visibility.mShowUIRibbon;
 
         float      immersiveModeFactor    = (VRSettings::values.vr_immersive_mode < 2)
                                                 ? immersiveScaleFactor[VRSettings::values.vr_immersive_mode]
@@ -599,8 +589,7 @@ private:
             }
 
             if (showUIRibbon) { mRibbonLayer->Frame(gOpenXr->mLocalSpace, layers, layerCount); }
-            const bool showLowerPanel =
-                showUIRibbon && appState.mLowerMenuType == LowerMenuType::MAIN_MENU;
+            const bool showLowerPanel = visibility.mShowLowerPanel;
             if (showLowerPanel) {
                 mGameSurfaceLayer->FrameLowerPanel(gOpenXr->mLocalSpace, layers, layerCount,
                                                    immersiveModeFactor);
@@ -699,45 +688,194 @@ private:
         mLastFrameEnd = frameEnd;
     }
 
+    struct PanelVisibility {
+        bool mShowGameList = false;
+        bool mShowUIRibbon = false;
+        bool mShowLowerPanel = false;
+    };
+
+    // Which panels show, from the app state. The game list replaces the game
+    // screens and menu bar while it's shown; the menu bar shows when toggled on (or
+    // in the positional menu), with the lower panel in its main menu.
+    static PanelVisibility GetPanelVisibility(const AppState& appState) {
+        PanelVisibility visibility;
+        visibility.mShowGameList = appState.mShouldShowGameList;
+        visibility.mShowUIRibbon = !visibility.mShowGameList &&
+                                   (appState.mLowerMenuType == LowerMenuType::POSITIONAL_MENU ||
+                                    appState.mIsLowerMenuToggledOn);
+        visibility.mShowLowerPanel = visibility.mShowUIRibbon &&
+                                     appState.mLowerMenuType == LowerMenuType::MAIN_MENU;
+        return visibility;
+    }
+
+    // Whether a controller at this aim pose points at a panel it can click on.
+    // `includeGameScreens`: whether the game screens (the touchscreen, and the top
+    // screen in the positional menu) count, or only the menus.
+    bool IsPointingAtPanel(const XrPosef& aimPose, const AppState& appState,
+                           const bool includeGameScreens) const {
+        const PanelVisibility visibility = GetPanelVisibility(appState);
+        const XrVector3f start = XrMath::Posef::Transform(aimPose, XrVector3f{0, 0, 0});
+        const XrVector3f end = XrMath::Posef::Transform(aimPose, XrVector3f{0, 0, -3.5f});
+        XrVector2f pos2d;
+        XrPosef pose3d;
+        return (appState.mShouldShowErrorMessage && mErrorMessageLayer->IsRayOnPanel(start, end)) ||
+               (visibility.mShowGameList && mGameListLayer->IsRayOnPanel(start, end)) ||
+               (appState.mIsKeyboardActive && mKeyboardLayer->IsRayOnPanel(start, end)) ||
+               (includeGameScreens && visibility.mShowLowerPanel &&
+                mGameSurfaceLayer->GetRayIntersectionWithPanel(start, end, pos2d, pose3d)) ||
+               (visibility.mShowUIRibbon && mRibbonLayer->IsRayOnPanel(start, end)) ||
+               (includeGameScreens && !visibility.mShowGameList &&
+                appState.mLowerMenuType == LowerMenuType::POSITIONAL_MENU &&
+                mGameSurfaceLayer->GetRayIntersectionWithPanelTopPanel(start, end, pos2d, pose3d));
+    }
+
+    // When a trigger is pulled, decides what it does until it's released: while
+    // its controller points at a panel, it clicks (and that controller becomes the
+    // pointer); otherwise it's a game button, pressing the 3DS button it's mapped
+    // to in the controller mapping (if any). While the settings wait for a button
+    // to map, only the menus are clicked, so a trigger pulled at anything else
+    // (the game screens included) is the button to map.
+    void UpdateTriggerRoles(const AppState& appState) {
+        for (int hand = 0; hand < InputStateFrame::NUM_CONTROLLERS; hand++) {
+            const XrActionStateBoolean& trigger = mInputStateFrame.mIndexTriggerState[hand];
+            if (trigger.currentState == XR_FALSE) {
+                mIsTriggerButton[hand] = false;
+                continue;
+            }
+            if (!trigger.changedSinceLastSync) {
+                continue; // keeps the role chosen when it was pulled
+            }
+            const bool isPointingAtPanel =
+                mInputStateFrame.mIsHandActive[hand] &&
+                IsPointingAtPanel(mInputStateFrame.mHandPositions[hand].pose, appState,
+                                  !appState.mIsCapturingControl);
+            mIsTriggerButton[hand] = !isPointingAtPanel;
+            ALOGI("{} trigger pulled: {}", hand == InputStateFrame::LEFT_CONTROLLER ? "Left" : "Right",
+                  isPointingAtPanel ? "click" : "game button");
+            if (isPointingAtPanel) {
+                mInputStateFrame.mPreferredHand =
+                    hand == InputStateFrame::LEFT_CONTROLLER ? InputStateFrame::LEFT_CONTROLLER
+                                                             : InputStateFrame::RIGHT_CONTROLLER;
+            }
+        }
+    }
+
     void HandleInput(JNIEnv* jni, const InputStateFrame& inputState, AppState& newState) const {
         assert(gOpenXr != nullptr);
 
-        // User stall marker: thumbstick clicks are not mapped to any game
-        // input, so clicking either stick stamps a marker in the log for the
-        // user to flag "I just saw a stall/artifact here".
+        // User stall marker: clicking a thumbstick that isn't mapped to a game
+        // button stamps a marker in the log for the user to flag "I just saw a
+        // stall/artifact here".
         for (const auto hand :
              {InputStateFrame::LEFT_CONTROLLER, InputStateFrame::RIGHT_CONTROLLER}) {
+            const auto control = hand == InputStateFrame::LEFT_CONTROLLER
+                                     ? VRSettings::VrControl::LEFT_STICK_CLICK
+                                     : VRSettings::VrControl::RIGHT_STICK_CLICK;
             const auto& clickState = inputState.mThumbStickClickState[hand];
-            if (clickState.changedSinceLastSync && clickState.currentState == XR_TRUE) {
+            if (VRSettings::values.vr_button_map[static_cast<size_t>(control)] == 0 &&
+                clickState.changedSinceLastSync && clickState.currentState == XR_TRUE) {
                 LogUserStallMarker(mFrameIndex);
                 break;
             }
         }
 
-        // Forward VR input to Android gamepad emulation
+        // Forward the controls to the emulated gamepad, each as the 3DS button it
+        // is mapped to in the settings. A button is held while any control mapped
+        // to it is (e.g. L on both the left bumper and the left grip).
+        {
+            using VRSettings::VrControl;
+            std::array<const XrActionStateBoolean*, VRSettings::kNumVrControls> controls{};
+            controls[static_cast<size_t>(VrControl::A)] = &inputState.mAButtonState;
+            controls[static_cast<size_t>(VrControl::B)] = &inputState.mBButtonState;
+            controls[static_cast<size_t>(VrControl::X)] = &inputState.mXButtonState;
+            controls[static_cast<size_t>(VrControl::Y)] = &inputState.mYButtonState;
+            controls[static_cast<size_t>(VrControl::DPAD_UP)] = &inputState.mDpadUpState;
+            controls[static_cast<size_t>(VrControl::DPAD_DOWN)] = &inputState.mDpadDownState;
+            controls[static_cast<size_t>(VrControl::DPAD_LEFT)] = &inputState.mDpadLeftState;
+            controls[static_cast<size_t>(VrControl::DPAD_RIGHT)] = &inputState.mDpadRightState;
+            controls[static_cast<size_t>(VrControl::LEFT_BUMPER)] =
+                &inputState.mBumperState[InputStateFrame::LEFT_CONTROLLER];
+            controls[static_cast<size_t>(VrControl::RIGHT_BUMPER)] =
+                &inputState.mBumperState[InputStateFrame::RIGHT_CONTROLLER];
+            controls[static_cast<size_t>(VrControl::LEFT_GRIP)] =
+                &inputState.mSqueezeTriggerState[InputStateFrame::LEFT_CONTROLLER];
+            controls[static_cast<size_t>(VrControl::RIGHT_GRIP)] =
+                &inputState.mSqueezeTriggerState[InputStateFrame::RIGHT_CONTROLLER];
+            controls[static_cast<size_t>(VrControl::LEFT_STICK_CLICK)] =
+                &inputState.mThumbStickClickState[InputStateFrame::LEFT_CONTROLLER];
+            controls[static_cast<size_t>(VrControl::RIGHT_STICK_CLICK)] =
+                &inputState.mThumbStickClickState[InputStateFrame::RIGHT_CONTROLLER];
+            // Triggers count as buttons only when pulled away from the panels.
+            XrActionStateBoolean triggersAsButtons[InputStateFrame::NUM_CONTROLLERS];
+            for (int hand = 0; hand < InputStateFrame::NUM_CONTROLLERS; hand++) {
+                triggersAsButtons[hand] = inputState.mIndexTriggerState[hand];
+                if (!mIsTriggerButton[hand]) {
+                    triggersAsButtons[hand].currentState = XR_FALSE;
+                    triggersAsButtons[hand].changedSinceLastSync = XR_FALSE;
+                }
+            }
+            controls[static_cast<size_t>(VrControl::LEFT_TRIGGER)] =
+                &triggersAsButtons[InputStateFrame::LEFT_CONTROLLER];
+            controls[static_cast<size_t>(VrControl::RIGHT_TRIGGER)] =
+                &triggersAsButtons[InputStateFrame::RIGHT_CONTROLLER];
+            controls[static_cast<size_t>(VrControl::LEFT_VIEW)] = &inputState.mLeftMenuButtonState;
+            controls[static_cast<size_t>(VrControl::RIGHT_MENU)] = &inputState.mRightMenuButtonState;
 
-        ForwardButtonStateIfNeeded(jni, mActivityObject, mForwardVRInputMethodID, 96 /* BUTTON_A */,
-                                   inputState.mAButtonState, "a");
-        ForwardButtonStateIfNeeded(jni, mActivityObject, mForwardVRInputMethodID, 97 /* BUTTON_B */,
-                                   inputState.mBButtonState, "b");
-        ForwardButtonStateIfNeeded(jni, mActivityObject, mForwardVRInputMethodID, 99 /* BUTTON_X */,
-                                   inputState.mXButtonState, "x");
-        ForwardButtonStateIfNeeded(jni, mActivityObject, mForwardVRInputMethodID,
-                                   100 /* BUTTON_Y */, inputState.mYButtonState, "y");
-        ForwardButtonStateIfNeeded(
-            jni, mActivityObject, mForwardVRInputMethodID, 102 /* BUTTON_L1 */,
-            inputState.mSqueezeTriggerState[InputStateFrame::LEFT_CONTROLLER], "l1");
-        ForwardButtonStateIfNeeded(
-            jni, mActivityObject, mForwardVRInputMethodID, 103 /* BUTTON_R1 */,
-            inputState.mSqueezeTriggerState[InputStateFrame::RIGHT_CONTROLLER], "r1");
-        ForwardButtonStateIfNeeded(jni, mActivityObject, mForwardVRInputMethodID, 19 /* DPAD_UP */,
-                                   inputState.mDpadUpState, "dpad_up");
-        ForwardButtonStateIfNeeded(jni, mActivityObject, mForwardVRInputMethodID,
-                                   20 /* DPAD_DOWN */, inputState.mDpadDownState, "dpad_down");
-        ForwardButtonStateIfNeeded(jni, mActivityObject, mForwardVRInputMethodID,
-                                   21 /* DPAD_LEFT */, inputState.mDpadLeftState, "dpad_left");
-        ForwardButtonStateIfNeeded(jni, mActivityObject, mForwardVRInputMethodID,
-                                   22 /* DPAD_RIGHT */, inputState.mDpadRightState, "dpad_right");
+            // While the settings wait for a button to map, report presses to them
+            // instead of the game (whose buttons are released meanwhile).
+            if (newState.mIsCapturingControl) {
+                for (size_t i = 0; i < VRSettings::kNumVrControls; i++) {
+                    if (controls[i]->changedSinceLastSync && controls[i]->currentState == XR_TRUE) {
+                        ALOGI("Controller mapping: {} pressed",
+                              VRSettings::kVrControlMappings[i].key);
+                        jni->CallVoidMethod(mActivityObject, mOnVrControlPressedMethodID,
+                                            static_cast<jint>(i));
+                        break;
+                    }
+                }
+            }
+
+#if !defined(USE_INGAME_MENU)
+            // The menu bar: toggled by its button, if any. Without one, it stays
+            // shown, as it holds the settings (and the mapping).
+            bool hasMenuBarButton = false;
+            for (size_t i = 0; i < VRSettings::kNumVrControls; i++) {
+                if (VRSettings::values.vr_button_map[i] != VRSettings::kVrActionToggleMenuBar) {
+                    continue;
+                }
+                hasMenuBarButton = true;
+                if (!newState.mIsCapturingControl && controls[i]->changedSinceLastSync &&
+                    controls[i]->currentState == XR_TRUE) {
+                    newState.mIsLowerMenuToggledOn = !newState.mIsLowerMenuToggledOn;
+                }
+            }
+            if (!hasMenuBarButton) {
+                newState.mIsLowerMenuToggledOn = true;
+            }
+#endif
+
+            std::map<int32_t, bool> isButtonHeld;
+            for (const auto& [button, wasHeld] : mForwardedButtonStates) {
+                isButtonHeld[button] = false;
+            }
+            for (size_t i = 0; i < VRSettings::kNumVrControls; i++) {
+                const int32_t button = VRSettings::values.vr_button_map[i];
+                if (button == 0 || button == VRSettings::kVrActionToggleMenuBar ||
+                    newState.mIsCapturingControl) {
+                    continue;
+                }
+                isButtonHeld[button] |= controls[i]->currentState == XR_TRUE;
+            }
+            // Held buttons are sent every frame, released ones once.
+            for (const auto& [button, isHeld] : isButtonHeld) {
+                bool& wasHeld = mForwardedButtonStates[button];
+                if (isHeld || wasHeld) {
+                    ForwardButtonStateChangeToCitra(jni, mActivityObject, mForwardVRInputMethodID,
+                                                    button, isHeld ? XR_TRUE : XR_FALSE);
+                }
+                wasHeld = isHeld;
+            }
+        }
 
         {
             // Right is circlepad, left is leftstick/circlepad, dpad is whatever
@@ -841,12 +979,6 @@ private:
             }
         }
 
-#if !defined(USE_INGAME_MENU)
-        if (mInputStateFrame.mLeftMenuButtonState.changedSinceLastSync &&
-            mInputStateFrame.mLeftMenuButtonState.currentState == XR_TRUE) {
-            newState.mIsLowerMenuToggledOn = !newState.mIsLowerMenuToggledOn;
-        }
-#endif
     }
 
     /** Handle the cursor and any hand-tracked/layer-dependent input
@@ -889,8 +1021,13 @@ private:
             if (isPreferredControllerActive) {
                 const XrPosef pose =
                     mInputStateFrame.mHandPositions[mInputStateFrame.mPreferredHand].pose;
+                // A trigger pulled while pointing elsewhere is a game button, not a click.
+                static const XrActionStateBoolean kReleasedTrigger = {
+                    XR_TYPE_ACTION_STATE_BOOLEAN, nullptr, XR_FALSE, XR_FALSE, 0, XR_TRUE};
                 const auto& triggerState =
-                    mInputStateFrame.mIndexTriggerState[mInputStateFrame.mPreferredHand];
+                    mIsTriggerButton[mInputStateFrame.mPreferredHand]
+                        ? kReleasedTrigger
+                        : mInputStateFrame.mIndexTriggerState[mInputStateFrame.mPreferredHand];
 
                 const XrVector3f start = XrMath::Posef::Transform(
                     mInputStateFrame.mHandPositions[mInputStateFrame.mPreferredHand].pose,
@@ -1058,22 +1195,6 @@ private:
                                 thumbstickState.currentState.y);
                         }
                     }
-                }
-
-                if (!shouldRenderCursor && !showGameList) {
-                    // Handling this here means L2/R2 are liable to
-                    // be slightly out of sync with the other
-                    // buttons (which are handled before
-                    // WaitFrame()). We'll see if that ends up being
-                    // a problem for any games.
-                    ForwardButtonStateIfNeeded(
-                        jni, mActivityObject, mForwardVRInputMethodID, 104 /* BUTTON_L2 */,
-                        mInputStateFrame.mIndexTriggerState[InputStateFrame::LEFT_CONTROLLER],
-                        "l2");
-                    ForwardButtonStateIfNeeded(
-                        jni, mActivityObject, mForwardVRInputMethodID, 105 /* BUTTON_R2 */,
-                        mInputStateFrame.mIndexTriggerState[InputStateFrame::RIGHT_CONTROLLER],
-                        "r2");
                 }
 
                 // Add a scale factor so the cursor doesn't scale as
@@ -1397,6 +1518,11 @@ private:
                     newAppState.mShouldShowGameList = message.mPayload == 1;
                     break;
                 }
+                case Message::Type::CAPTURE_CONTROL: {
+                    ALOGI("Received CAPTURE_CONTROL message: {}", message.mPayload);
+                    newAppState.mIsCapturingControl = message.mPayload == 1;
+                    break;
+                }
                 case Message::Type::EXIT_NEEDED: {
                     ALOGD("Received EXIT_NEEDED message");
                     newAppState.mIsStopRequested = true;
@@ -1525,6 +1651,8 @@ private:
         bool mShouldShowErrorMessage = false;
         bool mShouldShowGameList     = false;
         bool mIsEmulationPaused      = false;
+        // The settings are waiting for a controller button to map (see HandleInput()).
+        bool mIsCapturingControl     = false;
 
         bool mIsStopRequested   = false;
         bool mIsXrSessionActive = false;
@@ -1536,6 +1664,12 @@ private:
 
     std::unique_ptr<CursorLayer> mCursorLayer;
     std::unique_ptr<ControllerLayer> mControllerLayer;
+    // The 3DS buttons (Android key codes) last sent to the emulated gamepad, and
+    // whether they were held; see HandleInput().
+    mutable std::map<int32_t, bool> mForwardedButtonStates;
+    // Whether each trigger, while pulled, is a game button rather than a click; see
+    // UpdateTriggerRoles().
+    bool mIsTriggerButton[InputStateFrame::NUM_CONTROLLERS] = {false, false};
     std::unique_ptr<UILayer> mErrorMessageLayer;
     std::unique_ptr<GameSurfaceLayer> mGameSurfaceLayer;
     std::unique_ptr<PassthroughLayer> mPassthroughLayer;
@@ -1548,6 +1682,7 @@ private:
     InputStateFrame                   mInputStateFrame;
 
     jmethodID mForwardVRInputMethodID    = nullptr;
+    jmethodID mOnVrControlPressedMethodID = nullptr;
     jmethodID mForwardVRJoystickMethodID = nullptr;
     jmethodID mSendClickToWindowMethodID = nullptr;
     jmethodID mResumeGameMethodID        = nullptr;

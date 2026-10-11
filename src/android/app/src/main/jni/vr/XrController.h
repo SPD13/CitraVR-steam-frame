@@ -37,7 +37,8 @@ public:
     XrAction mLeftHandIndexTriggerAction = XR_NULL_HANDLE;
     XrAction mXButtonAction              = XR_NULL_HANDLE;
     XrAction mYButtonAction              = XR_NULL_HANDLE;
-    XrAction mLeftMenuButtonAction       = XR_NULL_HANDLE;
+    XrAction mLeftMenuButtonAction       = XR_NULL_HANDLE; // View on Steam Frame
+    XrAction mRightMenuButtonAction      = XR_NULL_HANDLE; // Menu on Steam Frame
 
     XrSpace mRightHandSpace = XR_NULL_HANDLE;
     XrPath  mRightHandSubactionPath;
@@ -50,6 +51,7 @@ public:
     XrAction mHandPoseAction       = XR_NULL_HANDLE;
     XrAction mThumbClickAction     = XR_NULL_HANDLE;
     XrAction mSqueezeTriggerAction = XR_NULL_HANDLE;
+    XrAction mBumperAction         = XR_NULL_HANDLE; // Steam Frame
     XrAction mThumbRestTouchAction = XR_NULL_HANDLE;
 
     // Steam Frame left d-pad.
@@ -75,11 +77,13 @@ struct InputStateFrame {
     XrActionStateBoolean  mThumbrestTouchState[NUM_CONTROLLERS];
     XrActionStateBoolean  mIndexTriggerState[NUM_CONTROLLERS];
     XrActionStateBoolean  mSqueezeTriggerState[NUM_CONTROLLERS];
+    XrActionStateBoolean  mBumperState[NUM_CONTROLLERS];
 
     // Left hand buttons.
     XrActionStateBoolean mXButtonState;
     XrActionStateBoolean mYButtonState;
     XrActionStateBoolean mLeftMenuButtonState;
+    XrActionStateBoolean mRightMenuButtonState;
 
     // Right hand buttons.
     XrActionStateBoolean mAButtonState;

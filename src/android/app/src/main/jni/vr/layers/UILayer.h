@@ -121,6 +121,11 @@ public:
      *
      * Note: assumes viewer is looking down the -Z axis.
      */
+    /** Whether the ray hits the panel (without the cursor bookkeeping of
+     *  GetRayIntersectionWithPanel()).
+     */
+    bool IsRayOnPanel(const XrVector3f& start, const XrVector3f& end) const;
+
     bool GetRayIntersectionWithPanel(const XrVector3f& start,
                                      const XrVector3f& end,
                                      XrVector2f&       result2d,

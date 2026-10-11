@@ -220,6 +220,12 @@ void Config::ApplyPerGameValues() {
         Settings::values.vr_immersive_mode = static_cast<u32>(immersive_mode);
     }
 
+    for (size_t i = 0; i < VRSettings::kNumVrControls; i++) {
+        VRSettings::values.vr_button_map[i] = static_cast<int32_t>(
+            ResolvePerGameInteger(title_section, "VR", VRSettings::kVrControlMappings[i].key,
+                                  VRSettings::values.vr_button_map[i]));
+    }
+
     const long factor_3d = ResolvePerGameInteger(
         title_section, "Renderer", Settings::values.factor_3d.GetLabel(),
         Settings::values.factor_3d.GetValue());
@@ -489,6 +495,35 @@ void Config::ReadValues() {
         android_config->GetBoolean("VR", "vr_show_controllers", true);
     VRSettings::values.vr_show_pointer_ray =
         android_config->GetBoolean("VR", "vr_show_pointer_ray", true);
+    for (size_t i = 0; i < VRSettings::kNumVrControls; i++) {
+        const VRSettings::VrControlMapping& mapping = VRSettings::kVrControlMappings[i];
+        int32_t defaultKeyCode = mapping.defaultKeyCode;
+        // Headsets without bumpers or a right Menu button (Quest) have L/R on the
+        // grips and the menu bar on the left Menu button instead. Keep in sync with
+        // IntSetting.kt.
+        if (VRSettings::values.hmd_type != VRSettings::HMDType::STEAMFRAME) {
+            switch (static_cast<VRSettings::VrControl>(i)) {
+            case VRSettings::VrControl::LEFT_BUMPER:
+            case VRSettings::VrControl::RIGHT_BUMPER:
+            case VRSettings::VrControl::RIGHT_MENU:
+                defaultKeyCode = 0;
+                break;
+            case VRSettings::VrControl::LEFT_GRIP:
+                defaultKeyCode = 102;
+                break;
+            case VRSettings::VrControl::RIGHT_GRIP:
+                defaultKeyCode = 103;
+                break;
+            case VRSettings::VrControl::LEFT_VIEW:
+                defaultKeyCode = VRSettings::kVrActionToggleMenuBar;
+                break;
+            default:
+                break;
+            }
+        }
+        VRSettings::values.vr_button_map[i] = static_cast<int32_t>(
+            android_config->GetInteger("VR", mapping.key, defaultKeyCode));
+    }
     VRSettings::values.vr_immersive_mode = android_config->GetInteger(
             "VR", "vr_immersive_mode", 0);
     Settings::values.vr_immersive_mode = VRSettings::values.vr_immersive_mode;

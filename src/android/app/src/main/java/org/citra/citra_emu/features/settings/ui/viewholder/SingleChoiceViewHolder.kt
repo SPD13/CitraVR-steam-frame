@@ -85,6 +85,11 @@ class SingleChoiceViewHolder(val binding: ListItemSettingBinding, adapter: Setti
     }
 
     override fun onLongClick(clicked: View): Boolean {
+        // Rows stored through several settings (VR controller mapping) have no
+        // single setting to reset.
+        if (setting.setting == null) {
+            return false
+        }
         if (setting.isActive) {
             return adapter.onLongClick(setting.setting!!, bindingAdapterPosition)
         } else {

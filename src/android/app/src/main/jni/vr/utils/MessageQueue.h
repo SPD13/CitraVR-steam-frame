@@ -40,6 +40,7 @@ struct Message {
         CHANGE_LOCK_HORIZONTAL_AXIS = 4, // payload 0 = unlock, 1 = lock
         RESET_PANEL_POSITIONS       = 5, // payload ignored
         SHOW_GAME_LIST              = 6, // payload 0 = hide game list, 1 = show game list
+        CAPTURE_CONTROL             = 7, // payload 1 = report the next control pressed, 0 = stop
     };
 
     Message() {}

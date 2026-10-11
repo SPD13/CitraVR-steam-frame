@@ -50,6 +50,9 @@ class VrGameListLayer(activity: VrActivity) : VrUILayer(activity, R.layout.vr_ga
         window.findViewById<Button>(R.id.button_citra_window).setOnClickListener {
             activity.exitToCitraWindow()
         }
+        window.findViewById<Button>(R.id.button_quit).setOnClickListener {
+            activity.quitCitra()
+        }
         isSurfaceCreated.set(true)
         sVrGameListLayer = WeakReference(this)
     }

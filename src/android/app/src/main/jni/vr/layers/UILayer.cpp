@@ -218,6 +218,15 @@ void UILayer::Frame(const XrSpace&                   space,
     }
 }
 
+bool UILayer::IsRayOnPanel(const XrVector3f& start, const XrVector3f& end) const {
+    const Swapchain& swapchain = mSurfaceSwapchain->GetSwapchain();
+    const XrVector2f scale = GetDensityScaleForSize(swapchain.mWidth, swapchain.mHeight, 1.0f);
+    XrVector2f result2d;
+    XrPosef result3d;
+    return ::GetRayIntersectionWithPanel(mWorldFromPanel, swapchain.mWidth, swapchain.mHeight,
+                                         scale, start, end, result2d, result3d);
+}
+
 bool UILayer::GetRayIntersectionWithPanel(const XrVector3f& start,
                                           const XrVector3f& end,
                                           XrVector2f&       result2d,
