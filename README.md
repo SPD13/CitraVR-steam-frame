@@ -54,7 +54,6 @@ Passthrough and the immersive modes haven't been checked on the headset yet. The
 - **Controllers:** your controllers are drawn in VR, using SteamVR's own render models of the Steam Frame controllers, read from the headset's SteamVR install and placed with the models' `openxr_aim` reference, as SteamVR places them.
 - **Pointer ray:** a ray runs from the pointing controller to the cursor, so you can see where you point. When it points at nothing, a short ray fades out.
 - **Reliable clicks:** a press counts where you aimed just before pulling the trigger (the pull tilts the controller), and small hand movements while the trigger is held don't turn a click into a drag. Moving further still drags, e.g. to scroll a list.
-- **Controller diagram:** to the left of the game (turn your head 90°), a panel shows the Steam Frame controllers labelled with the current mapping, per-game mappings and changes included, updated as you remap. **Show controller diagram** in the VR settings hides it (on by default; it applies right away).
 - **Settings:** **Show controllers** and **Show pointer ray** in the VR settings turn each on or off (both on by default; they apply from the next game start).
 - **How:** SteamVR on Steam Frame draws quad layers over projection layers whatever their order, so both are quad layers, which it sorts by depth among the panels. The ray is a thin quad along the ray, turned towards the head. Each controller is drawn, per eye, into a quad at the controller that faces that eye and is shown to it only, rendered from that eye's position so the stereo pair is exact. Where no model is found (e.g. on Quest), only the ray is drawn.
 
@@ -67,6 +66,11 @@ Passthrough and the immersive modes haven't been checked on the headset yet. The
 - **Defaults (Steam Frame):** the Nintendo layout on the face buttons (the 3DS's B where the Frame's A is: A→B, B→A, X→Y, Y→X), the d-pad on the d-pad, L/R on the bumpers, Select/Start on the left/right stick clicks, ZL/ZR on the triggers, Home on the View button and the menu bar on the Menu button; the grips are free. Headsets without bumpers or a right Menu button (Quest) have L/R on the grips and the menu bar on the left Menu button.
 - **Per game:** with **Per-game** selected in the in-game settings, the mapping is saved for the running game only. Changes apply right away, also mid-game.
 - **Resets and copies:** **Reset to default** puts every button back on its default (globally, or for the game). With **Per-game** selected, **Apply to global** makes the game's mapping the global one, and **Use the global mapping** removes the game's own mapping.
+
+**Controller diagram in VR**
+- **Where:** a panel 90° to the left of the game shows the Steam Frame controllers: turn your head to check which button does what, without leaving the game.
+- **Live labels:** the labels come from the mapping in use, per-game mapping included, and change as soon as you remap a button, also from the in-game settings.
+- **Setting:** **Show controller diagram** in the VR settings (on by default) hides it, right away.
 
 **One-question setup and folders that survive updates**
 - **First launch:** when CitraVR has all-files access (always on Steam Frame), first launch asks a single question: *Do you want to manually configure Citra directories?* Answering **No** creates `/storage/emulated/0/CitraVR` (data) and `/storage/emulated/0/CitraVR/games` (games) and goes straight to the game list.
@@ -122,9 +126,13 @@ Passthrough and the immersive modes haven't been checked on the headset yet. The
 
 **A/B and X/Y are swapped on purpose:** the Frame's buttons follow the Xbox layout (A at the bottom, B on the right), while the 3DS has A on the right and B at the bottom (and X at the top, Y on the left). Swapping them puts each 3DS button where it sits on a 3DS, so the Frame's B presses the 3DS's A, A presses B, Y presses X and X presses Y.
 
-In VR, turn your head to the left to see the controllers labelled with the current mapping (**Show controller diagram** in the VR settings hides it).
-
 All of this can be changed in **Settings → VR → Controller mapping**, also in game from the menu bar's **Settings** tab (see [Controller mapping](#what-this-fork-adds)).
+
+### Controller diagram in VR
+
+In VR, turn your head to the left: a panel shows the controllers labelled with the current mapping, and it follows any change you make (per game too). **Show controller diagram** in the VR settings hides it.
+
+![The controller diagram panel in VR, labelled with the default mapping](docs/images/vr-controller-diagram.png)
 
 ### Pointing and clicking
 
