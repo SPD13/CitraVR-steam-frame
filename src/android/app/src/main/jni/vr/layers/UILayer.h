@@ -49,9 +49,12 @@ License     :   Licensed under GPLv3 or any later version.
 #pragma once
 
 #include "../OpenXR.h"
-#include "../Swapchain.h"
+#include "../SurfaceSwapchain.h"
 #include "../utils/Common.h"
 
+#include <chrono>
+#include <deque>
+#include <memory>
 #include <string>
 
 /*
@@ -80,6 +83,12 @@ public:
             const XrQuaternionf&& orientation, JNIEnv* jni, jobject activityObject,
             const XrSession& session);
     ~UILayer();
+
+    /** Called once-per-frame, whether or not the layer is visible. Copies the
+     *  UI Android last drew into the layer's swapchain, where the runtime needs
+     *  that (see SurfaceSwapchain).
+     */
+    void UpdateSurface();
 
     /** Called once-per-frame. Populates the given layer list with a single layer
      *  representing the UI layer.
@@ -112,6 +121,11 @@ public:
      *
      * Note: assumes viewer is looking down the -Z axis.
      */
+    /** Whether the ray hits the panel (without the cursor bookkeeping of
+     *  GetRayIntersectionWithPanel()).
+     */
+    bool IsRayOnPanel(const XrVector3f& start, const XrVector3f& end) const;
+
     bool GetRayIntersectionWithPanel(const XrVector3f& start,
                                      const XrVector3f& end,
                                      XrVector2f&       result2d,
@@ -120,8 +134,9 @@ public:
     /** Forwards the click event to the corresponding position on the Android UI window.
      *  @param pos2d the 2D position of the click in the Android display coordinate
      *  system.
-     *  @param type the type of the click event. 0 for down, 1 for up, 2 for movement (while cursor
-     *  is already pressed), 3 for cancel (cursor left the panel mid-press).
+     *  @param type the type of the click event. 1 for down, 0 for up (as the trigger state),
+     *  2 for movement (while cursor is already pressed), 3 for cancel (cursor left the panel
+     *  mid-press). Down is placed where the cursor was just before the trigger pull.
      */
     void SendClickToUI(const XrVector2f& pos2d, const int type);
 
@@ -149,17 +164,25 @@ private:
     /** Creates the swapchain.
      * @return 0 on success, error code less than 0 on failure.
      */
-    int CreateSwapchain();
+    int CreateSwapchain(const jobject activityObject);
 
     const XrSession mSession;
-    Swapchain       mSwapchain;
+    std::unique_ptr<SurfaceSwapchain> mSurfaceSwapchain;
+    mutable bool                      mHasLoggedFirstFrame = false;
+
+    // Where the cursor has recently been on this panel (cleared when it leaves),
+    // so a press can be placed where the user aimed; see SendClickToUI().
+    struct CursorSample {
+        std::chrono::steady_clock::time_point mTime;
+        XrVector2f                            mPosition;
+    };
+    mutable std::deque<CursorSample> mCursorHistory;
 
     //============================
     // JNI objects
     JNIEnv* mEnv             = nullptr;
     jclass  mVrUILayerClass  = nullptr;
     jobject mVrUILayerObject = nullptr;
-    jobject mSurface         = nullptr;
 
     //============================
     // JNI methods

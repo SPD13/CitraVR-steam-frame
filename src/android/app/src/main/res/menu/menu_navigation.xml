@@ -7,6 +7,11 @@
         android:title="@string/home_options" />
 
     <item
+        android:id="@+id/romServerFragment"
+        android:icon="@drawable/ic_rom_server"
+        android:title="@string/home_rom_server" />
+
+    <item
         android:id="@+id/searchFragment"
         android:icon="@drawable/ic_search"
         android:title="@string/home_search" />

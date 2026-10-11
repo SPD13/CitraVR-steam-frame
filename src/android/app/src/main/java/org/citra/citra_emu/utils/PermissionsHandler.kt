@@ -27,6 +27,11 @@ object PermissionsHandler {
             }
 
             val uri = citraDirectory
+            if (FileUtil.isFileUri(uri)) {
+                // A plain path (default folders, all-files access): no grant to take.
+                val directory = java.io.File(uri.path ?: return false)
+                return directory.isDirectory && directory.canWrite()
+            }
             val takeFlags =
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             context.contentResolver.takePersistableUriPermission(uri, takeFlags)

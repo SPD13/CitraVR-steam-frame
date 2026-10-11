@@ -13,6 +13,7 @@ import org.citra.citra_emu.R
 import org.citra.citra_emu.features.settings.model.AbstractSetting
 import org.citra.citra_emu.features.settings.model.Settings
 import org.citra.citra_emu.features.settings.model.view.RunnableSetting
+import org.citra.citra_emu.features.settings.model.view.VrButtonMappingSetting
 import org.citra.citra_emu.features.settings.model.view.SettingsItem
 import org.citra.citra_emu.features.settings.ui.SettingsActivityView
 import org.citra.citra_emu.features.settings.ui.SettingsAdapter
@@ -131,7 +132,13 @@ class VrSettingsMenu(panelRoot: View, private val gameTitle: String?) :
 
     private fun loadMenu(menuTag: String, resetScroll: Boolean = true) {
         val resetSettings = if (scope == Scope.PER_GAME) ::showResetPerGameDialog else null
-        presenter = SettingsFragmentPresenter(this, resetSettings).also {
+        val isPerGame = scope == Scope.PER_GAME && activeTitleId != null
+        presenter = SettingsFragmentPresenter(
+            this,
+            resetSettings,
+            if (isPerGame) ::useGlobalControllerMapping else null,
+            if (isPerGame) ::applyControllerMappingToGlobal else null
+        ).also {
             it.onCreate(menuTag, "")
             it.onViewCreated(adapter!!)
         }
@@ -261,6 +268,48 @@ class VrSettingsMenu(panelRoot: View, private val gameTitle: String?) :
         presenter?.loadSettingsList()
     }
 
+    // Drops the running game's own controller mapping, so it follows the global one.
+    private fun useGlobalControllerMapping() {
+        val titleId = activeTitleId ?: return
+        handler.removeCallbacks(applyRunnable)
+        isDirty = false
+        val keys = VrButtonMappingSetting.INPUTS.map { it.key }
+        if (!PerGameSettings.clearUserValues(titleId, keys)) {
+            adapter?.showMessageDialog(
+                R.string.vr_controller_mapping_use_global,
+                R.string.reset_per_game_settings_failed
+            )
+            return
+        }
+
+        settings.loadSettings(this)
+        loadPerGameSettings()
+        NativeLibrary.reloadSettings()
+        presenter?.loadSettingsList()
+    }
+
+    // Makes the running game's controller mapping the global one (for the games
+    // without their own). Only the mapping is written to the global settings.
+    private fun applyControllerMappingToGlobal() {
+        // Save pending per-game changes first, so the game keeps what is shown.
+        handler.removeCallbacks(applyRunnable)
+        saveAndApply()
+        if (isDirty) {
+            return
+        }
+        if (SettingsFile.saveFile(SettingsFile.FILE_NAME_CONFIG, VrButtonMappingSetting.INPUTS)) {
+            adapter?.showMessageDialog(
+                R.string.vr_controller_mapping_apply_to_global,
+                R.string.vr_controller_mapping_applied_to_global
+            )
+        } else {
+            adapter?.showMessageDialog(
+                R.string.vr_controller_mapping_apply_to_global,
+                R.string.vr_controller_mapping_apply_to_global_failed
+            )
+        }
+    }
+
     private fun updateBanner() {
         val titleId = activeTitleId ?: run {
             perGameBanner.visibility = View.GONE
@@ -343,7 +392,7 @@ class VrSettingsMenu(panelRoot: View, private val gameTitle: String?) :
             settingsList.forEach { item ->
                 val definition = PerGameSettings.definitionFor(item.setting?.key)
                 val isPerGameReset =
-                    item is RunnableSetting && item.nameId == R.string.reset_to_default
+                    item is RunnableSetting && item.nameId in PER_GAME_RUNNABLES
                 if (definition != null && snapshot != null) {
                     decoratePerGameSetting(item, snapshot)
                 } else if (isPerGameReset) {
@@ -391,6 +440,14 @@ class VrSettingsMenu(panelRoot: View, private val gameTitle: String?) :
 
     companion object {
         private const val APPLY_DELAY_MS = 500L
+
+        // Actions that work on the running game's settings in per-game mode.
+        private val PER_GAME_RUNNABLES = setOf(
+            R.string.reset_to_default,
+            R.string.vr_controller_mapping_reset,
+            R.string.vr_controller_mapping_use_global,
+            R.string.vr_controller_mapping_apply_to_global
+        )
     }
 
     private enum class Scope {

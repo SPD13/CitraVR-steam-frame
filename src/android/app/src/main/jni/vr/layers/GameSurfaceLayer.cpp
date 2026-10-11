@@ -24,6 +24,7 @@ License     :   Licensed under GPLv3 or any later version.
 #include <EGL/egl.h>
 #include <GLES3/gl3.h>
 
+#include <algorithm>
 #include <chrono>
 
 #include <stdlib.h>
@@ -49,6 +50,22 @@ float GetDensitySysprop(const uint32_t resolutionFactor) {
         lastDensity = SyspropUtils::GetSysPropAsFloat("debug.citra.density", kDefaultDensity);
     }
     return lastDensity;
+}
+
+// Resolution of the lower panel, in multiples of the 3DS's (320x240). Changeable
+// at runtime with `setprop debug.citra.lower_panel_resolution <factor>` (up to
+// GameSurfaceLayer's kMaxLowerPanelResolution), to compare how the headset
+// shows it.
+float GetLowerPanelResolutionSysprop() {
+    static constexpr float kDefaultLowerPanelResolution = 2.0f;
+    static float lastResolution = kDefaultLowerPanelResolution;
+    static std::chrono::time_point<std::chrono::steady_clock> lastTime = {};
+    if ((std::chrono::steady_clock::now() - lastTime) >= kMinTimeBetweenChecks) {
+        lastTime = std::chrono::steady_clock::now();
+        lastResolution = SyspropUtils::GetSysPropAsFloat("debug.citra.lower_panel_resolution",
+                                                         kDefaultLowerPanelResolution);
+    }
+    return lastResolution;
 }
 
 int32_t GetCylinderSysprop() {
@@ -220,6 +237,21 @@ XrVector2f GetDensityScaleFor3dsScreen(const uint32_t screenWidth,
            scaleFactor;
 }
 
+/** The lower panel as it is shown: just in front of its pose, which it shares
+ *  with the menu ribbon. The ribbon is drawn in the same plane, behind the lower
+ *  panel, with a dark translucent background over its whole area. Runtimes that
+ *  composite layers in order (Quest) show the lower panel on top; SteamVR on
+ *  Steam Frame depth-tests them, and the coplanar panels z-fought: the ribbon's
+ *  background showed through as a moving pattern of black pixels.
+ */
+Panel GetShownLowerPanel(const Panel& lowerPanel) {
+    constexpr float kOffsetFromRibbonInMeters = 0.01f;
+    Panel shown = lowerPanel;
+    shown.mWorldFromPanel.position = XrMath::Posef::Transform(
+        lowerPanel.mWorldFromPanel, XrVector3f{0.0f, 0.0f, kOffsetFromRibbonInMeters});
+    return shown;
+}
+
 } // anonymous namespace
 
 /*
@@ -282,7 +314,17 @@ void GameSurfaceLayer::FrameTopPanel(const XrSpace& space, std::vector<XrComposi
     // Prevent a seam between the top and bottom view
     constexpr uint32_t verticalBorderTex   = 1;
     constexpr uint32_t horizontalBorderTex = 1;
-    const bool         useCylinder       = (GetCylinderSysprop() != 0) || (mImmersiveMode > 0);
+    if (mLowerRegion >= 0) {
+        const float resolution = GetLowerPanelResolutionSysprop();
+        mSurfaceSwapchain->SetRegionOutputSize(
+            mLowerRegion, static_cast<uint32_t>(Core::kScreenBottomWidth * resolution),
+            static_cast<uint32_t>(Core::kScreenBottomHeight * resolution));
+    }
+    // Latch the newest frame from Citra, if the swapchain needs it copied.
+    mSurfaceSwapchain->Update();
+    // Without cylinder layers (e.g. SteamVR), immersive modes fall back to the flat panel.
+    const bool useCylinder = OpenXr::GetExtensions().mCompositionLayerCylinder &&
+                             ((GetCylinderSysprop() != 0) || (mImmersiveMode > 0));
     if (useCylinder) {
         // Create the Top Display Panel (Curved display)
         for (uint32_t eye = 0; eye < NUM_EYES; eye++) {
@@ -307,15 +349,10 @@ void GameSurfaceLayer::FrameTopPanel(const XrSpace& space, std::vector<XrComposi
                                      : kSuperImmersiveRadius;
 
             layer.eyeVisibility = eye == 0 ? XR_EYE_VISIBILITY_LEFT : XR_EYE_VISIBILITY_RIGHT;
-            memset(&layer.subImage, 0, sizeof(XrSwapchainSubImage));
-            layer.subImage.swapchain               = mSwapchain.mHandle;
-            layer.subImage.imageRect.offset.x =
-                (eye == 0 ? 0 : mTopPanel.mWidth) + horizontalBorderTex;
-            layer.subImage.imageRect.offset.y      = 0;
-            layer.subImage.imageRect.extent.width =
-                mTopPanel.mWidth - (2 * horizontalBorderTex);
-            layer.subImage.imageRect.extent.height = mTopPanel.mHeight - verticalBorderTex;
-            layer.subImage.imageArrayIndex         = 0;
+            layer.subImage = GetSubImage(mTopRegion,
+                                         (eye == 0 ? 0 : mTopPanel.mWidth) + horizontalBorderTex,
+                                         0, mTopPanel.mWidth - (2 * horizontalBorderTex),
+                                         mTopPanel.mHeight - verticalBorderTex);
             layer.pose                             = topPanelFromWorld;
             layer.pose.position.z += (mImmersiveMode < 2) ? radius : 0.0f;
             layer.radius = radius;
@@ -324,7 +361,7 @@ void GameSurfaceLayer::FrameTopPanel(const XrSpace& space, std::vector<XrComposi
                                  : GameSurfaceLayer::DEFAULT_CYLINDER_CENTRAL_ANGLE_DEGREES *
                                        immersiveModeFactor) *
                 MATH_FLOAT_PI / 180.0f;
-            layer.next        = &kVerticalFlipLayout;
+            layer.next = mSurfaceSwapchain->GetLayerNext();
             layer.aspectRatio = static_cast<double>(
                 static_cast<float>(Core::kScreenTopWidth) / Core::kScreenTopHeight);
             layers[layerCount++].mCylinder = layer;
@@ -335,21 +372,16 @@ void GameSurfaceLayer::FrameTopPanel(const XrSpace& space, std::vector<XrComposi
             XrCompositionLayerQuad layer     = {};
 
             layer.type       = XR_TYPE_COMPOSITION_LAYER_QUAD;
-            layer.next       = &kVerticalFlipLayout;
+            layer.next = mSurfaceSwapchain->GetLayerNext();
             layer.layerFlags = XR_COMPOSITION_LAYER_CORRECT_CHROMATIC_ABERRATION_BIT;
 
             layer.space = space;
 
             layer.eyeVisibility = eye == 0 ? XR_EYE_VISIBILITY_LEFT : XR_EYE_VISIBILITY_RIGHT;
-            memset(&layer.subImage, 0, sizeof(XrSwapchainSubImage));
-            layer.subImage.swapchain          = mSwapchain.mHandle;
-            layer.subImage.imageRect.offset.x =
-                (eye == 0 ? 0 : mTopPanel.mWidth) + horizontalBorderTex;
-            layer.subImage.imageRect.offset.y = 0;
-            layer.subImage.imageRect.extent.width =
-                mTopPanel.mWidth - (2 * horizontalBorderTex);
-            layer.subImage.imageRect.extent.height = mTopPanel.mHeight - verticalBorderTex;
-            layer.subImage.imageArrayIndex         = 0;
+            layer.subImage = GetSubImage(mTopRegion,
+                                         (eye == 0 ? 0 : mTopPanel.mWidth) + horizontalBorderTex,
+                                         0, mTopPanel.mWidth - (2 * horizontalBorderTex),
+                                         mTopPanel.mHeight - verticalBorderTex);
             layer.pose                             = mTopPanel.mWorldFromPanel;
             const auto scale = GetDensityScaleFor3dsScreen(Core::kScreenTopWidth,
                                                            Core::kScreenTopHeight, 1.0f,
@@ -379,22 +411,19 @@ void GameSurfaceLayer::FrameLowerPanel(const XrSpace&                   space,
     XrCompositionLayerQuad layer     = {};
 
     layer.type       = XR_TYPE_COMPOSITION_LAYER_QUAD;
-    layer.next       = &kVerticalFlipLayout;
+    layer.next = mSurfaceSwapchain->GetLayerNext();
     layer.layerFlags = XR_COMPOSITION_LAYER_CORRECT_CHROMATIC_ABERRATION_BIT;
 
     layer.space = space;
 
     layer.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
-    memset(&layer.subImage, 0, sizeof(XrSwapchainSubImage));
-    layer.subImage.swapchain          = mSwapchain.mHandle;
-    layer.subImage.imageRect.offset.x = mLowerPanel.mWidth * (0.5f - (0.5f / immersiveModeFactor));
-    layer.subImage.imageRect.offset.y = mLowerPanel.mHeight + verticalBorderTex +
-                                        mLowerPanel.mHeight * (0.5f - (0.5f / immersiveModeFactor));
-    layer.subImage.imageRect.extent.width  = mLowerPanel.mWidth / immersiveModeFactor;
-    layer.subImage.imageRect.extent.height =
-        mLowerPanel.mHeight / immersiveModeFactor - verticalBorderTex;
-    layer.subImage.imageArrayIndex         = 0;
-    layer.pose                             = mLowerPanel.mWorldFromPanel;
+    const int32_t x = mLowerPanel.mWidth * (0.5f - (0.5f / immersiveModeFactor));
+    const int32_t y = mLowerPanel.mHeight + verticalBorderTex +
+                      mLowerPanel.mHeight * (0.5f - (0.5f / immersiveModeFactor));
+    const int32_t width = mLowerPanel.mWidth / immersiveModeFactor;
+    const int32_t height = mLowerPanel.mHeight / immersiveModeFactor - verticalBorderTex;
+    layer.subImage = GetSubImage(mLowerRegion, x, y, width, height);
+    layer.pose = GetShownLowerPanel(mLowerPanel).mWorldFromPanel;
     const auto scale = GetDensityScaleFor3dsScreen(Core::kScreenBottomWidth,
                                                    Core::kScreenBottomHeight,
                                                    mLowerPanel.mScaleFactor, mResolutionFactor);
@@ -421,7 +450,9 @@ bool GameSurfaceLayer::GetRayIntersectionWithPanel(const XrVector3f& start,
     const XrVector2f scale =
         GetDensityScaleFor3dsScreen(Core::kScreenBottomWidth, Core::kScreenBottomHeight,
                                     mLowerPanel.mScaleFactor, mResolutionFactor);
-    return ::GetRayIntersectionWithPanel(mLowerPanel, scale, start, end, result2d, result3d);
+    // Hit-test where the panel is shown, so the cursor lands on it, not behind it.
+    return ::GetRayIntersectionWithPanel(GetShownLowerPanel(mLowerPanel), scale, start, end,
+                                         result2d, result3d);
 }
 
 void GameSurfaceLayer::SetTopPanelFromController(const XrVector3f& controllerPosition) {
@@ -493,57 +524,75 @@ int32_t GameSurfaceLayer::Init(const XrSession& session, const jobject activityO
     mVrGameSurfaceClass =
         JniUtils::GetGlobalClassReference(mEnv, activityObject, gameSurfaceClassName.c_str());
     BAIL_ON_COND(mVrGameSurfaceClass == nullptr, "No java Game Surface Layer class", -1);
-    CreateSwapchain();
+    CreateSwapchain(activityObject);
     SetSurface(activityObject);
     return 0;
 }
 
 void GameSurfaceLayer::Shutdown() {
-    xrDestroySwapchain(mSwapchain.mHandle);
-    mSwapchain.mHandle = XR_NULL_HANDLE;
-    mSwapchain.mWidth  = 0;
-    mSwapchain.mHeight = 0;
+    mSurfaceSwapchain.reset();
+    mSurface = nullptr;
     mEnv->DeleteGlobalRef(mVrGameSurfaceClass);
 }
 
-void GameSurfaceLayer::CreateSwapchain() {
-    // Initialize swapchain
-
-    XrSwapchainCreateInfo xsci;
-    memset(&xsci, 0, sizeof(xsci));
-    xsci.type        = XR_TYPE_SWAPCHAIN_CREATE_INFO;
-    xsci.next        = nullptr;
-    xsci.usageFlags  = XR_SWAPCHAIN_USAGE_SAMPLED_BIT | XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;
-    xsci.format      = 0;
-    xsci.sampleCount = 0;
-    xsci.width       = SURFACE_WIDTH_UNSCALED * mResolutionFactor;
-    xsci.height      = SURFACE_HEIGHT_UNSCALED * mResolutionFactor;
-
-    xsci.faceCount = 0;
-    xsci.arraySize = 0;
-    // Note: you can't have mips when you render directly to a
-    // surface-backed swapchain. You just have to scale everything
-    // so that you do not need them.
-    xsci.mipCount = 0;
-
+void GameSurfaceLayer::CreateSwapchain(const jobject activityObject) {
+    const uint32_t width = SURFACE_WIDTH_UNSCALED * mResolutionFactor;
+    const uint32_t height = SURFACE_HEIGHT_UNSCALED * mResolutionFactor;
     ALOGI("GameSurfaceLayer: Creating swapchain of size {}x{} ({}x{} with "
           "resolution factor {}x)",
-          xsci.width, xsci.height, SURFACE_WIDTH_UNSCALED, SURFACE_HEIGHT_UNSCALED,
-          mResolutionFactor);
+          width, height, SURFACE_WIDTH_UNSCALED, SURFACE_HEIGHT_UNSCALED, mResolutionFactor);
 
-    PFN_xrCreateSwapchainAndroidSurfaceKHR pfnCreateSwapchainAndroidSurfaceKHR = nullptr;
-    assert(OpenXr::GetInstance() != XR_NULL_HANDLE);
-    XrResult xrResult =
-        xrGetInstanceProcAddr(OpenXr::GetInstance(), "xrCreateSwapchainAndroidSurfaceKHR",
-                              (PFN_xrVoidFunction*)(&pfnCreateSwapchainAndroidSurfaceKHR));
-    if (xrResult != XR_SUCCESS || pfnCreateSwapchainAndroidSurfaceKHR == nullptr) {
-        FAIL("xrGetInstanceProcAddr failed for "
-             "xrCreateSwapchainAndroidSurfaceKHR");
+    // Where the surface is copied into swapchains (Steam Frame), each panel gets a
+    // swapchain of its own instead of one for the whole surface:
+    //  - Steam Frame injects Valve's foveated-rendering layer into every app. It
+    //    takes any swapchain taller than 1000 px for an eye buffer and applies a
+    //    gaze-dependent fragment density map to every Vulkan render pass of that
+    //    height. The whole surface (1440 px tall at 3x) would register, and
+    //    matches the height of Citra's own output, so each swapchain stays at
+    //    most kMaxSwapchainHeight tall to keep the layer out of our rendering.
+    //  - The lower panel is shown much smaller than its texels (about 520 px
+    //    across for 960 texels at 3x), so it gets a filtered downscale (see
+    //    GetLowerPanelResolutionSysprop()) the compositor barely needs to shrink.
+    const bool usesRegions = SurfaceSwapchain::UsesCopies();
+    mSurfaceSwapchain = std::make_unique<SurfaceSwapchain>(mSession, mEnv, activityObject, width,
+                                                           height, !usesRegions);
+    mSurface = mSurfaceSwapchain->GetSurface();
+    if (usesRegions) {
+        constexpr uint32_t kMaxSwapchainHeight = 1000;
+        // Room for the lower panel at up to this multiple of the 3DS resolution.
+        constexpr uint32_t kMaxLowerPanelResolution = 3;
+        const uint32_t panelHeight = height / 2;
+        // Top panels (both eyes), scaled down only if they would be too tall.
+        const float topScale =
+            std::min(1.0f, static_cast<float>(kMaxSwapchainHeight) / panelHeight);
+        mTopRegion = mSurfaceSwapchain->AddRegion(
+            0, 0, width, panelHeight, static_cast<uint32_t>(width * topScale),
+            static_cast<uint32_t>(panelHeight * topScale));
+        // Lower panel, skipping the row bordering the top panels.
+        const uint32_t lowerWidth = Core::kScreenBottomWidth * mResolutionFactor;
+        const uint32_t lowerOutputWidth =
+            std::min(lowerWidth, Core::kScreenBottomWidth * kMaxLowerPanelResolution);
+        const uint32_t lowerOutputHeight =
+            std::min(panelHeight - 1, Core::kScreenBottomHeight * kMaxLowerPanelResolution);
+        mLowerRegion =
+            mSurfaceSwapchain->AddRegion(0, panelHeight + 1, lowerWidth, panelHeight - 1,
+                                         lowerOutputWidth, lowerOutputHeight);
     }
+}
 
-    OXR(pfnCreateSwapchainAndroidSurfaceKHR(mSession, &xsci, &mSwapchain.mHandle, &mSurface));
-    mSwapchain.mWidth  = xsci.width;
-    mSwapchain.mHeight = xsci.height;
+XrSwapchainSubImage GameSurfaceLayer::GetSubImage(const int region, const int32_t x,
+                                                  const int32_t y, const int32_t width,
+                                                  const int32_t height) const {
+    XrSwapchainSubImage subImage = {};
+    if (region >= 0) {
+        subImage.swapchain = mSurfaceSwapchain->GetRegionSwapchain(region).mHandle;
+        subImage.imageRect = mSurfaceSwapchain->ToRegionImageRect(region, x, y, width, height);
+    } else {
+        subImage.swapchain = mSurfaceSwapchain->GetSwapchain().mHandle;
+        subImage.imageRect = mSurfaceSwapchain->ToImageRect(x, y, width, height);
+    }
+    subImage.imageArrayIndex = 0;
+    return subImage;
 }
 
 void GameSurfaceLayer::SetLowerPanelWithPose(const XrPosef& pose) {

@@ -34,6 +34,44 @@ object FileUtil {
 
     val context: Context get() = CitraApplication.appContext
 
+    /** Whether [uri] is a plain file-system path (file://) rather than a document URI. */
+    fun isFileUri(uri: Uri): Boolean = uri.scheme == "file"
+
+    private fun fileOf(path: String): File? {
+        val uri = Uri.parse(path)
+        return if (isFileUri(uri)) File(uri.path ?: return null) else null
+    }
+
+    /**
+     * A DocumentFile for a directory, which can be a plain path (file://, used with
+     * all-files access) or a document tree picked with the system file picker.
+     */
+    @JvmStatic
+    fun directoryDocument(context: Context, uri: Uri): DocumentFile? =
+        if (isFileUri(uri)) {
+            uri.path?.let { DocumentFile.fromFile(File(it)) }
+        } else {
+            DocumentFile.fromTreeUri(context, uri)
+        }
+
+    /**
+     * Creates a file named exactly `name` in `parent`. DocumentFile.createFile()
+     * on a plain-path directory appends an extension for the MIME type (".bin"
+     * for application/octet-stream), which document trees don't do.
+     */
+    fun createDocumentFile(parent: DocumentFile, mimeType: String, name: String): DocumentFile? {
+        if (!isFileUri(parent.uri)) {
+            return parent.createFile(mimeType, name)
+        }
+        val file = File(parent.uri.path ?: return null, name)
+        return try {
+            if (file.exists() || file.createNewFile()) DocumentFile.fromFile(file) else null
+        } catch (e: IOException) {
+            Log.error("[FileUtil]: Cannot create file ${file.path}: ${e.message}")
+            null
+        }
+    }
+
     /**
      * Create a file from directory with filename.
      *
@@ -45,7 +83,7 @@ object FileUtil {
     fun createFile(directory: String, filename: String): DocumentFile? {
         try {
             val directoryUri = Uri.parse(directory)
-            val parent = DocumentFile.fromTreeUri(context, directoryUri)
+            val parent = directoryDocument(context, directoryUri)
                 ?: return null
             val decodedFilename = URLDecoder.decode(filename, DECODE_METHOD)
             val extensionPosition = decodedFilename.lastIndexOf('.')
@@ -61,7 +99,7 @@ object FileUtil {
             }
 
             val exists = parent.findFile(decodedFilename)
-            return exists ?: parent.createFile(mimeType, decodedFilename)
+            return exists ?: createDocumentFile(parent, mimeType, decodedFilename)
         } catch (e: Exception) {
             Log.error("[FileUtil]: Cannot create file, error: " + e.message)
             return null
@@ -80,7 +118,7 @@ object FileUtil {
         try {
             val directoryUri = Uri.parse(directory)
             val parent: DocumentFile =
-                DocumentFile.fromTreeUri(context, directoryUri)
+                directoryDocument(context, directoryUri)
                     ?: return null
             val decodedDirectoryName = URLDecoder.decode(directoryName, DECODE_METHOD)
             val exists = parent.findFile(decodedDirectoryName)
@@ -126,6 +164,15 @@ object FileUtil {
      */
     @JvmStatic
     fun listFiles(uri: Uri): Array<CheapDocument> {
+        if (isFileUri(uri)) {
+            return File(uri.path ?: return emptyArray()).listFiles()?.map {
+                CheapDocument(
+                    it.name,
+                    if (it.isDirectory) DocumentsContract.Document.MIME_TYPE_DIR else APPLICATION_OCTET_STREAM,
+                    Uri.fromFile(it)
+                )
+            }?.toTypedArray() ?: emptyArray()
+        }
         val columns = arrayOf(
             DocumentsContract.Document.COLUMN_DOCUMENT_ID,
             DocumentsContract.Document.COLUMN_DISPLAY_NAME,
@@ -166,6 +213,7 @@ object FileUtil {
      */
     @JvmStatic
     fun exists(path: String): Boolean {
+        fileOf(path)?.let { return it.exists() }
         var c: Cursor? = null
         try {
             val uri = Uri.parse(path)
@@ -194,6 +242,7 @@ object FileUtil {
      */
     @JvmStatic
     fun isDirectory(path: String): Boolean {
+        fileOf(path)?.let { return it.isDirectory }
         val columns = arrayOf(DocumentsContract.Document.COLUMN_MIME_TYPE)
         var isDirectory = false
         var c: Cursor? = null
@@ -266,6 +315,7 @@ object FileUtil {
      */
     @JvmStatic
     fun getFileSize(path: String): Long {
+        fileOf(path)?.let { return it.length() }
         val columns = arrayOf(DocumentsContract.Document.COLUMN_SIZE)
         var size: Long = 0
         var c: Cursor? = null
@@ -292,12 +342,12 @@ object FileUtil {
     fun copyFile(sourceUri: Uri, destinationUri: Uri, destinationFilename: String): Boolean {
         try {
             val destinationParent =
-                DocumentFile.fromTreeUri(context, destinationUri) ?: return false
+                directoryDocument(context, destinationUri) ?: return false
             val filename = URLDecoder.decode(destinationFilename, "UTF-8")
             var destination = destinationParent.findFile(filename)
             if (destination == null) {
                 destination =
-                    destinationParent.createFile("application/octet-stream", filename)
+                    createDocumentFile(destinationParent, "application/octet-stream", filename)
             }
             if (destination == null) {
                 return false
@@ -368,8 +418,8 @@ object FileUtil {
 
             // Searching all files which need to be copied and struct the directory in destination
             while (dirs.isNotEmpty()) {
-                val fromDir = DocumentFile.fromTreeUri(context, dirs[0].first)
-                val toDir = DocumentFile.fromTreeUri(context, dirs[0].second)
+                val fromDir = directoryDocument(context, dirs[0].first)
+                val toDir = directoryDocument(context, dirs[0].second)
                 if (fromDir == null || toDir == null) {
                     continue
                 }
@@ -397,7 +447,7 @@ object FileUtil {
                     } else {
                         var target = toDir.findFile(filename)
                         if (target == null || !target.exists()) {
-                            target = toDir.createFile(document.mimeType, document.filename)
+                            target = createDocumentFile(toDir, document.mimeType, document.filename)
                         }
                         if (target == null) {
                             continue
@@ -427,6 +477,7 @@ object FileUtil {
 
     @JvmStatic
     fun renameFile(path: String, destinationFilename: String): Boolean {
+        fileOf(path)?.let { return it.renameTo(File(it.parentFile, destinationFilename)) }
         try {
             val uri = Uri.parse(path)
             DocumentsContract.renameDocument(context.contentResolver, uri, destinationFilename)
@@ -439,6 +490,11 @@ object FileUtil {
 
     @JvmStatic
     fun moveFile(filename: String, sourceDirUriString: String, destDirUriString: String): Boolean {
+        val sourceDir = fileOf(sourceDirUriString)
+        val destDir = fileOf(destDirUriString)
+        if (sourceDir != null && destDir != null) {
+            return File(sourceDir, filename).renameTo(File(destDir, filename))
+        }
         try {
             val sourceFileUri = ("$sourceDirUriString%2F$filename").toUri()
             val sourceDirUri = sourceDirUriString.toUri()
@@ -458,6 +514,7 @@ object FileUtil {
 
     @JvmStatic
     fun deleteDocument(path: String): Boolean {
+        fileOf(path)?.let { return it.deleteRecursively() }
         try {
             val uri = Uri.parse(path)
             DocumentsContract.deleteDocument(context.contentResolver, uri)
@@ -528,7 +585,7 @@ object FileUtil {
 
     fun copyToExternalStorage(sourceFile: Uri, destinationDir: DocumentFile): DocumentFile? {
         val filename = getFilename(sourceFile)
-        val destinationFile = destinationDir.createFile("application/zip", filename)!!
+        val destinationFile = createDocumentFile(destinationDir, "application/zip", filename)!!
         destinationFile.outputStream().use { os ->
             sourceFile.inputStream().use { it.copyTo(os) }
         }

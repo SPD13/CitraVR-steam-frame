@@ -33,6 +33,11 @@
     </fragment>
 
     <fragment
+        android:id="@+id/romServerFragment"
+        android:name="org.citra.citra_emu.fragments.RomServerFragment"
+        android:label="RomServerFragment" />
+
+    <fragment
         android:id="@+id/searchFragment"
         android:name="org.citra.citra_emu.fragments.SearchFragment"
         android:label="SearchFragment" />

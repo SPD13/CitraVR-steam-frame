@@ -13,6 +13,7 @@ License     :   Licensed under GPLv3 or any later version.
 #include "OpenXR.h"
 #include "utils/LogUtils.h"
 
+#include <utility>
 #include <vector>
 
 #include <assert.h>
@@ -55,6 +56,80 @@ XrActionSuggestedBinding ActionSuggestedBinding(const XrInstance& instance, XrAc
     return asb;
 }
 
+// Steam Frame controllers, via XR_VALVE_frame_controller_interaction. Without
+// these, SteamVR maps the Frame controllers onto the Touch bindings, which puts
+// three of the right controller's face buttons on B and leaves the d-pad as Y.
+// Returns false if the runtime rejected every variant.
+bool SuggestFrameControllerBindings(const XrInstance& instance, const InputStateStatic& state) {
+    // Valve's documentation and SteamVR in the field disagree on the profile
+    // name, so try both.
+    static constexpr const char* kProfilePaths[] = {
+        "/interaction_profiles/valve/frame_controller",
+        "/interaction_profiles/valve/frame_controller_valve",
+    };
+    for (const char* profilePath : kProfilePaths) {
+        // One unknown path rejects the whole suggestion, so retry without the
+        // grips and/or the right Menu button if needed.
+        static constexpr std::pair<bool, bool> kVariants[] = {
+            {true, true}, {true, false}, {false, true}, {false, false}};
+        for (const auto& [bindSqueeze, bindRightMenu] : kVariants) {
+            std::vector<XrActionSuggestedBinding> bindings;
+            const auto bind = [&](const XrAction action, const char* path) {
+                bindings.push_back(ActionSuggestedBinding(instance, action, path));
+            };
+            bind(state.mAButtonAction, "/user/hand/right/input/a/click");
+            bind(state.mBButtonAction, "/user/hand/right/input/b/click");
+            bind(state.mXButtonAction, "/user/hand/right/input/x/click");
+            bind(state.mYButtonAction, "/user/hand/right/input/y/click");
+            bind(state.mDpadUpAction, "/user/hand/left/input/dpad_up/click");
+            bind(state.mDpadDownAction, "/user/hand/left/input/dpad_down/click");
+            bind(state.mDpadLeftAction, "/user/hand/left/input/dpad_left/click");
+            bind(state.mDpadRightAction, "/user/hand/left/input/dpad_right/click");
+            bind(state.mLeftMenuButtonAction, "/user/hand/left/input/view/click");
+            if (bindRightMenu) {
+                bind(state.mRightMenuButtonAction, "/user/hand/right/input/menu/click");
+            }
+            bind(state.mLeftHandIndexTriggerAction, "/user/hand/left/input/trigger/click");
+            bind(state.mRightHandIndexTriggerAction, "/user/hand/right/input/trigger/click");
+            bind(state.mHandPoseAction, "/user/hand/left/input/aim/pose");
+            bind(state.mHandPoseAction, "/user/hand/right/input/aim/pose");
+            bind(state.mThumbStickAction, "/user/hand/left/input/thumbstick");
+            bind(state.mThumbStickAction, "/user/hand/right/input/thumbstick");
+            bind(state.mThumbClickAction, "/user/hand/left/input/thumbstick/click");
+            bind(state.mThumbClickAction, "/user/hand/right/input/thumbstick/click");
+            // Bumpers and grips are separate controls, each mapped to a 3DS button in
+            // the settings (by default, L/R on both, as on Quest).
+            bind(state.mBumperAction, "/user/hand/left/input/bumper/click");
+            bind(state.mBumperAction, "/user/hand/right/input/bumper/click");
+            if (bindSqueeze) {
+                bind(state.mSqueezeTriggerAction, "/user/hand/left/input/squeeze/value");
+                bind(state.mSqueezeTriggerAction, "/user/hand/right/input/squeeze/value");
+            }
+
+            XrPath interactionProfilePath = XR_NULL_PATH;
+            OXR(xrStringToPath(instance, profilePath, &interactionProfilePath));
+            XrInteractionProfileSuggestedBinding suggestedBindings = {};
+            suggestedBindings.type = XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING;
+            suggestedBindings.interactionProfile = interactionProfilePath;
+            suggestedBindings.suggestedBindings = bindings.data();
+            suggestedBindings.countSuggestedBindings = bindings.size();
+            const XrResult result =
+                xrSuggestInteractionProfileBindings(instance, &suggestedBindings);
+            if (XR_SUCCEEDED(result)) {
+                ALOGI("Using Steam Frame controller bindings ({}{}{})", profilePath,
+                      bindSqueeze ? "" : ", without grips",
+                      bindRightMenu ? "" : ", without the right Menu button");
+                return true;
+            }
+            ALOGW("Steam Frame controller bindings rejected ({}{}{}): {}", profilePath,
+                  bindSqueeze ? "" : ", without grips",
+                  bindRightMenu ? "" : ", without the right Menu button",
+                  static_cast<int32_t>(result));
+        }
+    }
+    return false;
+}
+
 XrSpace CreateActionSpace(const XrSession& session, XrAction poseAction, XrPath subactionPath) {
     XrActionSpaceCreateInfo asci         = {};
     asci.type                            = XR_TYPE_ACTION_SPACE_CREATE_INFO;
@@ -82,10 +157,20 @@ InputStateStatic::InputStateStatic(const XrInstance& instance, const XrSession& 
     mLeftHandIndexTriggerAction  = CreateAction(mActionSet, XR_ACTION_TYPE_BOOLEAN_INPUT,
                                                 "left_index_trigger", "Left Index Trigger");
     mLeftMenuButtonAction = CreateAction(mActionSet, XR_ACTION_TYPE_BOOLEAN_INPUT, "menu", "Menu");
+    mRightMenuButtonAction =
+        CreateAction(mActionSet, XR_ACTION_TYPE_BOOLEAN_INPUT, "right_menu", "Right Menu");
     mAButtonAction        = CreateAction(mActionSet, XR_ACTION_TYPE_BOOLEAN_INPUT, "a", "A button");
     mBButtonAction        = CreateAction(mActionSet, XR_ACTION_TYPE_BOOLEAN_INPUT, "b", "B button");
     mXButtonAction        = CreateAction(mActionSet, XR_ACTION_TYPE_BOOLEAN_INPUT, "x", "X button");
     mYButtonAction        = CreateAction(mActionSet, XR_ACTION_TYPE_BOOLEAN_INPUT, "y", "Y button");
+    // Only bound on controllers with a d-pad (Steam Frame).
+    mDpadUpAction = CreateAction(mActionSet, XR_ACTION_TYPE_BOOLEAN_INPUT, "dpad_up", "D-pad up");
+    mDpadDownAction =
+        CreateAction(mActionSet, XR_ACTION_TYPE_BOOLEAN_INPUT, "dpad_down", "D-pad down");
+    mDpadLeftAction =
+        CreateAction(mActionSet, XR_ACTION_TYPE_BOOLEAN_INPUT, "dpad_left", "D-pad left");
+    mDpadRightAction =
+        CreateAction(mActionSet, XR_ACTION_TYPE_BOOLEAN_INPUT, "dpad_right", "D-pad right");
 
     OXR(xrStringToPath(instance, "/user/hand/left", &mLeftHandSubactionPath));
     OXR(xrStringToPath(instance, "/user/hand/right", &mRightHandSubactionPath));
@@ -105,6 +190,8 @@ InputStateStatic::InputStateStatic(const XrInstance& instance, const XrSession& 
 
     mSqueezeTriggerAction = CreateAction(mActionSet, XR_ACTION_TYPE_BOOLEAN_INPUT,
                                          "squeeze_trigger", nullptr, 2, handSubactionPaths);
+    mBumperAction = CreateAction(mActionSet, XR_ACTION_TYPE_BOOLEAN_INPUT, "bumper", "Bumper", 2,
+                                 handSubactionPaths);
 
     XrPath interactionProfilePath = XR_NULL_PATH;
     OXR(xrStringToPath(instance, "/interaction_profiles/oculus/touch_controller",
@@ -161,6 +248,10 @@ InputStateStatic::InputStateStatic(const XrInstance& instance, const XrSession& 
         suggestedBindings.countSuggestedBindings = bindings.size();
         OXR(xrSuggestInteractionProfileBindings(instance, &suggestedBindings));
 
+        if (OpenXr::GetExtensions().mValveFrameControllerInteraction) {
+            SuggestFrameControllerBindings(instance, *this);
+        }
+
         // Attach to session
         XrSessionActionSetsAttachInfo attachInfo = {};
         attachInfo.type                          = XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO;
@@ -177,6 +268,8 @@ InputStateStatic::~InputStateStatic() {
     mRightHandIndexTriggerAction = XR_NULL_HANDLE;
     OXR(xrDestroyAction(mLeftMenuButtonAction));
     mLeftMenuButtonAction = XR_NULL_HANDLE;
+    OXR(xrDestroyAction(mRightMenuButtonAction));
+    mRightMenuButtonAction = XR_NULL_HANDLE;
     OXR(xrDestroyAction(mAButtonAction));
     mAButtonAction = XR_NULL_HANDLE;
     OXR(xrDestroyAction(mBButtonAction));
@@ -185,6 +278,14 @@ InputStateStatic::~InputStateStatic() {
     mXButtonAction = XR_NULL_HANDLE;
     OXR(xrDestroyAction(mYButtonAction));
     mYButtonAction = XR_NULL_HANDLE;
+    OXR(xrDestroyAction(mDpadUpAction));
+    mDpadUpAction = XR_NULL_HANDLE;
+    OXR(xrDestroyAction(mDpadDownAction));
+    mDpadDownAction = XR_NULL_HANDLE;
+    OXR(xrDestroyAction(mDpadLeftAction));
+    mDpadLeftAction = XR_NULL_HANDLE;
+    OXR(xrDestroyAction(mDpadRightAction));
+    mDpadRightAction = XR_NULL_HANDLE;
     OXR(xrDestroyAction(mHandPoseAction));
     mHandPoseAction = XR_NULL_HANDLE;
     OXR(xrDestroyAction(mThumbStickAction));
@@ -195,6 +296,8 @@ InputStateStatic::~InputStateStatic() {
     mThumbRestTouchAction = XR_NULL_HANDLE;
     OXR(xrDestroyAction(mSqueezeTriggerAction));
     mSqueezeTriggerAction = XR_NULL_HANDLE;
+    OXR(xrDestroyAction(mBumperAction));
+    mBumperAction = XR_NULL_HANDLE;
 
     if (mLeftHandSpace != XR_NULL_HANDLE) {
         OXR(xrDestroySpace(mLeftHandSpace));
@@ -259,7 +362,13 @@ void InputStateFrame::SyncButtonsAndThumbSticks(
     mXButtonState = SyncButtonState(session, staticState->mXButtonAction);
     mYButtonState = SyncButtonState(session, staticState->mYButtonAction);
 
+    mDpadUpState = SyncButtonState(session, staticState->mDpadUpAction);
+    mDpadDownState = SyncButtonState(session, staticState->mDpadDownAction);
+    mDpadLeftState = SyncButtonState(session, staticState->mDpadLeftAction);
+    mDpadRightState = SyncButtonState(session, staticState->mDpadRightAction);
+
     mLeftMenuButtonState = SyncButtonState(session, staticState->mLeftMenuButtonAction);
+    mRightMenuButtonState = SyncButtonState(session, staticState->mRightMenuButtonAction);
 
     // Sync thumbstick states
     mThumbStickState[LEFT_CONTROLLER]  = SyncVector2fState(session, staticState->mThumbStickAction,
@@ -279,17 +388,25 @@ void InputStateFrame::SyncButtonsAndThumbSticks(
     mThumbrestTouchState[RIGHT_CONTROLLER] = SyncButtonState(
         session, staticState->mThumbRestTouchAction, staticState->mRightHandSubactionPath);
 
-    // Sync index trigger states
-    mIndexTriggerState[LEFT_CONTROLLER] = SyncButtonState(
-        session, staticState->mLeftHandIndexTriggerAction, staticState->mLeftHandSubactionPath);
-    mIndexTriggerState[RIGHT_CONTROLLER] = SyncButtonState(
-        session, staticState->mRightHandIndexTriggerAction, staticState->mRightHandSubactionPath);
+    // Sync index trigger states. These are one action per hand, created without
+    // subaction paths, so they must be queried without one: strict runtimes
+    // (SteamVR) reject the query with XR_ERROR_PATH_UNSUPPORTED otherwise.
+    mIndexTriggerState[LEFT_CONTROLLER] =
+        SyncButtonState(session, staticState->mLeftHandIndexTriggerAction);
+    mIndexTriggerState[RIGHT_CONTROLLER] =
+        SyncButtonState(session, staticState->mRightHandIndexTriggerAction);
 
     // Sync squeeze trigger states
     mSqueezeTriggerState[LEFT_CONTROLLER] = SyncButtonState(
         session, staticState->mSqueezeTriggerAction, staticState->mLeftHandSubactionPath);
     mSqueezeTriggerState[RIGHT_CONTROLLER] = SyncButtonState(
         session, staticState->mSqueezeTriggerAction, staticState->mRightHandSubactionPath);
+
+    // Sync bumper states (Steam Frame)
+    mBumperState[LEFT_CONTROLLER] = SyncButtonState(session, staticState->mBumperAction,
+                                                    staticState->mLeftHandSubactionPath);
+    mBumperState[RIGHT_CONTROLLER] = SyncButtonState(session, staticState->mBumperAction,
+                                                     staticState->mRightHandSubactionPath);
 
     if (staticState->mLeftHandSpace == XR_NULL_HANDLE) {
         staticState->mLeftHandSpace = CreateActionSpace(session, staticState->mHandPoseAction,
@@ -347,19 +464,9 @@ void InputStateFrame::SyncHandPoses(const XrSession&                         ses
         } else if (!isLeftHandActive && isRightHandActive) {
             mPreferredHand = RIGHT_CONTROLLER;
         } else if (isLeftHandActive && isRightHandActive) {
-            // if both controllers are active, use whichever one last pressed
-            // the index trigger
-            if (mIndexTriggerState[LEFT_CONTROLLER].changedSinceLastSync &&
-                mIndexTriggerState[LEFT_CONTROLLER].currentState == 1) {
-                mPreferredHand = LEFT_CONTROLLER;
-            }
-            if (mIndexTriggerState[RIGHT_CONTROLLER].changedSinceLastSync &&
-                mIndexTriggerState[RIGHT_CONTROLLER].currentState == 1) {
-                mPreferredHand = RIGHT_CONTROLLER;
-            } else {
-                // if neither controller has pressed the index trigger, use the
-                // last active controller
-            }
+            // if both controllers are active, keep the one that last clicked with
+            // its trigger while pointing at a panel (see UpdateTriggerRoles() in
+            // vr_main.cpp)
         } else {
             // if no controllers are active, use the last active controller
         }

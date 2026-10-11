@@ -10,7 +10,7 @@ import org.citra.citra_emu.features.settings.model.AbstractIntSetting
 import org.citra.citra_emu.features.settings.model.AbstractSetting
 import org.citra.citra_emu.features.settings.model.AbstractShortSetting
 
-class SingleChoiceSetting(
+open class SingleChoiceSetting(
     setting: AbstractSetting?,
     titleId: Int,
     descriptionId: Int,
@@ -24,7 +24,7 @@ class SingleChoiceSetting(
 ) : SettingsItem(setting, titleId, descriptionId) {
     override val type = TYPE_SINGLE_CHOICE
 
-    val selectedValue: Int
+    open val selectedValue: Int
         get() {
             if (setting == null) {
                 return defaultValue!!

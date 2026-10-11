@@ -44,6 +44,7 @@ import org.citra.citra_emu.features.settings.model.view.StringInputSetting
 import org.citra.citra_emu.features.settings.model.view.StringSingleChoiceSetting
 import org.citra.citra_emu.features.settings.model.view.SubmenuSetting
 import org.citra.citra_emu.features.settings.model.view.SwitchSetting
+import org.citra.citra_emu.features.settings.model.view.VrButtonMappingSetting
 import org.citra.citra_emu.features.settings.utils.SettingsFile
 import org.citra.citra_emu.fragments.ResetSettingsDialogFragment
 import org.citra.citra_emu.utils.BirthdayMonth
@@ -56,7 +57,11 @@ import org.citra.citra_emu.vr.utils.VRUtils
 
 class SettingsFragmentPresenter(
     private val fragmentView: SettingsFragmentView,
-    private val resetSettings: (() -> Unit)? = null
+    private val resetSettings: (() -> Unit)? = null,
+    // In-game per-game settings only: drops the game's own controller mapping.
+    private val useGlobalControllerMapping: (() -> Unit)? = null,
+    // In-game per-game settings only: makes the game's controller mapping the global one.
+    private val applyControllerMappingToGlobal: (() -> Unit)? = null
 ) {
     private var menuTag: String? = null
     private lateinit var gameId: String
@@ -126,6 +131,7 @@ class SettingsFragmentPresenter(
 
             Settings.SECTION_THEME -> addThemeSettings(sl)
             Settings.SECTION_VR -> addVRSettings(sl)
+            Settings.SECTION_VR_CONTROLLER_MAPPING -> addVrControllerMappingSettings(sl)
             Settings.SECTION_CUSTOM_LANDSCAPE -> addCustomLandscapeSettings(sl)
 
             Settings.SECTION_CUSTOM_PORTRAIT -> addCustomPortraitSettings(sl)
@@ -2181,9 +2187,107 @@ class SettingsFragmentPresenter(
         }
     }
 
+    // The 3DS buttons, each with the controller inputs that press it (see
+    // VrButtonMappingSetting). Applies right away, also in game, and can be set
+    // per game. Buttons are Android key codes, as sent to the emulated gamepad.
+    private fun addVrControllerMappingSettings(sl: ArrayList<SettingsItem>) {
+        activityView.setToolbarTitle(context.getString(R.string.vr_controller_mapping))
+        sl.apply {
+            add(
+                RunnableSetting(
+                    R.string.vr_controller_mapping_reset,
+                    R.string.vr_controller_mapping_reset_description,
+                    true,
+                    R.drawable.ic_restore,
+                    {
+                        settingsAdapter.showConfirmationDialog(
+                            R.string.vr_controller_mapping_reset,
+                            R.string.vr_controller_mapping_reset_confirmation
+                        ) { resetVrControllerMapping() }
+                    }
+                )
+            )
+            applyControllerMappingToGlobal?.let { applyToGlobal ->
+                add(
+                    RunnableSetting(
+                        R.string.vr_controller_mapping_apply_to_global,
+                        R.string.vr_controller_mapping_apply_to_global_description,
+                        true,
+                        R.drawable.ic_controls_settings,
+                        {
+                            settingsAdapter.showConfirmationDialog(
+                                R.string.vr_controller_mapping_apply_to_global,
+                                R.string.vr_controller_mapping_apply_to_global_confirmation,
+                                applyToGlobal
+                            )
+                        }
+                    )
+                )
+            }
+            useGlobalControllerMapping?.let { useGlobal ->
+                add(
+                    RunnableSetting(
+                        R.string.vr_controller_mapping_use_global,
+                        R.string.vr_controller_mapping_use_global_description,
+                        true,
+                        R.drawable.ic_restore,
+                        {
+                            settingsAdapter.showConfirmationDialog(
+                                R.string.vr_controller_mapping_use_global,
+                                R.string.vr_controller_mapping_use_global_confirmation,
+                                useGlobal
+                            )
+                        }
+                    )
+                )
+            }
+            add(VrButtonMappingSetting(96, R.string.vr_3ds_button_a))
+            add(VrButtonMappingSetting(97, R.string.vr_3ds_button_b))
+            add(VrButtonMappingSetting(99, R.string.vr_3ds_button_x))
+            add(VrButtonMappingSetting(100, R.string.vr_3ds_button_y))
+            add(VrButtonMappingSetting(102, R.string.vr_3ds_button_l))
+            add(VrButtonMappingSetting(103, R.string.vr_3ds_button_r))
+            add(VrButtonMappingSetting(104, R.string.vr_3ds_button_zl))
+            add(VrButtonMappingSetting(105, R.string.vr_3ds_button_zr))
+            add(VrButtonMappingSetting(108, R.string.vr_3ds_button_start))
+            add(VrButtonMappingSetting(109, R.string.vr_3ds_button_select))
+            add(VrButtonMappingSetting(110, R.string.vr_3ds_button_home))
+            add(VrButtonMappingSetting(19, R.string.vr_3ds_button_dpad_up))
+            add(VrButtonMappingSetting(20, R.string.vr_3ds_button_dpad_down))
+            add(VrButtonMappingSetting(21, R.string.vr_3ds_button_dpad_left))
+            add(VrButtonMappingSetting(22, R.string.vr_3ds_button_dpad_right))
+            add(VrButtonMappingSetting(VrButtonMappingSetting.MENU_BAR, R.string.vr_action_menu_bar))
+        }
+    }
+
+    // Puts every controller input back on its default 3DS button (globally, or for
+    // the game when editing per-game settings).
+    private fun resetVrControllerMapping() {
+        var changed = false
+        VrButtonMappingSetting.INPUTS.forEach { setting ->
+            if (setting.int != setting.defaultValue) {
+                setting.int = setting.defaultValue
+                changed = true
+            }
+            fragmentView.putSetting(setting)
+        }
+        if (changed) {
+            fragmentView.onSettingChanged()
+        }
+        fragmentView.loadSettingsList()
+    }
+
     private fun addVRSettings(sl: ArrayList<SettingsItem>) {
         activityView.setToolbarTitle(context.getString(R.string.preferences_vr))
         sl.apply {
+            add(
+                SubmenuSetting(
+                    R.string.vr_controller_mapping,
+                    R.string.vr_controller_mapping_description,
+                    R.drawable.ic_controls_settings,
+                    Settings.SECTION_VR_CONTROLLER_MAPPING
+                )
+            )
             add(
                 SingleChoiceSetting(
                     IntSetting.VR_ENVIRONMENT,
@@ -2193,6 +2297,24 @@ class SettingsFragmentPresenter(
                     R.array.vrBackgroundValues,
                     IntSetting.VR_ENVIRONMENT.key,
                     IntSetting.VR_ENVIRONMENT.defaultValue
+                )
+            )
+            add(
+                SwitchSetting(
+                    BooleanSetting.VR_SHOW_CONTROLLERS,
+                    R.string.vr_show_controllers,
+                    R.string.vr_show_controllers_description,
+                    BooleanSetting.VR_SHOW_CONTROLLERS.key,
+                    BooleanSetting.VR_SHOW_CONTROLLERS.defaultValue
+                )
+            )
+            add(
+                SwitchSetting(
+                    BooleanSetting.VR_SHOW_POINTER_RAY,
+                    R.string.vr_show_pointer_ray,
+                    R.string.vr_show_pointer_ray_description,
+                    BooleanSetting.VR_SHOW_POINTER_RAY.key,
+                    BooleanSetting.VR_SHOW_POINTER_RAY.defaultValue
                 )
             )
             add(

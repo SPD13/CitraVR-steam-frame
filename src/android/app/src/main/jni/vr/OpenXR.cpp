@@ -17,6 +17,8 @@ License     :   Licensed under GPLv3 or any later version.
 
 #include <openxr/openxr_platform.h>
 
+#include <algorithm>
+#include <string>
 #include <vector>
 
 #include <assert.h>
@@ -90,88 +92,97 @@ namespace {
     }
 }
 
-// Next return code: -3
-int XrCheckRequiredExtensions(const char* const* requiredExtensionNames,
-                              const size_t       numRequiredExtensions) {
+// Returns the names of every instance extension the runtime offers, or an empty list on
+// failure.
+std::vector<std::string> XrEnumerateAvailableExtensions() {
 
 #ifndef NDEBUG
     XrEnumerateLayerProperties();
 #endif
 
-    // Check the list of required extensions against what is supported by the
-    // runtime.
-    {
-        XrResult                                   result;
-        PFN_xrEnumerateInstanceExtensionProperties xrEnumerateInstanceExtensionProperties;
-        OXR(result = xrGetInstanceProcAddr(
-                XR_NULL_HANDLE, "xrEnumerateInstanceExtensionProperties",
-                (PFN_xrVoidFunction*)&xrEnumerateInstanceExtensionProperties));
-        if (result != XR_SUCCESS) {
-            ALOGE("Failed to get xrEnumerateInstanceExtensionProperties "
-                  "function pointer.");
-            return -1;
-        }
-
-        uint32_t numInputExtensions  = 0;
-        uint32_t numOutputExtensions = 0;
-        OXR(xrEnumerateInstanceExtensionProperties(NULL, numInputExtensions, &numOutputExtensions,
-                                                   NULL));
-        ALOGV("xrEnumerateInstanceExtensionProperties found {} extension(s).", numOutputExtensions);
-
-        numInputExtensions = numOutputExtensions;
-
-        auto extensionProperties = std::vector<XrExtensionProperties>(numOutputExtensions);
-
-        for (auto& ext : extensionProperties) {
-            ext.type = XR_TYPE_EXTENSION_PROPERTIES;
-            ext.next = NULL;
-        }
-
-        OXR(xrEnumerateInstanceExtensionProperties(NULL, numInputExtensions, &numOutputExtensions,
-                                                   extensionProperties.data()));
-#ifndef NDEBUG
-        for (uint32_t i = 0; i < numOutputExtensions; i++) {
-            ALOGV("Extension #{} = '{}'.", i, extensionProperties[i].extensionName);
-        }
-#endif
-
-        for (uint32_t i = 0; i < numRequiredExtensions; i++) {
-            bool found = false;
-            for (uint32_t j = 0; j < numOutputExtensions; j++) {
-                if (!strcmp(requiredExtensionNames[i], extensionProperties[j].extensionName)) {
-                    ALOGD("Found required extension {}", requiredExtensionNames[i]);
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                ALOGE("Failed to find required extension {}", requiredExtensionNames[i]);
-                return -2;
-            }
-        }
+    XrResult result;
+    PFN_xrEnumerateInstanceExtensionProperties xrEnumerateInstanceExtensionProperties;
+    OXR(result =
+            xrGetInstanceProcAddr(XR_NULL_HANDLE, "xrEnumerateInstanceExtensionProperties",
+                                  (PFN_xrVoidFunction*)&xrEnumerateInstanceExtensionProperties));
+    if (result != XR_SUCCESS) {
+        ALOGE("Failed to get xrEnumerateInstanceExtensionProperties "
+              "function pointer.");
+        return {};
     }
-    return 0;
+
+    uint32_t numInputExtensions = 0;
+    uint32_t numOutputExtensions = 0;
+    OXR(xrEnumerateInstanceExtensionProperties(NULL, numInputExtensions, &numOutputExtensions,
+                                               NULL));
+    ALOGV("xrEnumerateInstanceExtensionProperties found {} extension(s).", numOutputExtensions);
+
+    numInputExtensions = numOutputExtensions;
+
+    auto extensionProperties = std::vector<XrExtensionProperties>(numOutputExtensions);
+
+    for (auto& ext : extensionProperties) {
+        ext.type = XR_TYPE_EXTENSION_PROPERTIES;
+        ext.next = NULL;
+    }
+
+    OXR(xrEnumerateInstanceExtensionProperties(NULL, numInputExtensions, &numOutputExtensions,
+                                               extensionProperties.data()));
+
+    std::vector<std::string> availableExtensions;
+    for (uint32_t i = 0; i < numOutputExtensions; i++) {
+        ALOGV("Extension #{} = '{}'.", i, extensionProperties[i].extensionName);
+        availableExtensions.emplace_back(extensionProperties[i].extensionName);
+    }
+    return availableExtensions;
 }
 
-XrInstance XrInstanceCreate() {
-    // Check that the extensions required are present.
-    static const char* const requiredExtensionNames[] = {
-        XR_KHR_OPENGL_ES_ENABLE_EXTENSION_NAME,
-        XR_EXT_PERFORMANCE_SETTINGS_EXTENSION_NAME,
-        XR_KHR_ANDROID_THREAD_SETTINGS_EXTENSION_NAME,
-        XR_KHR_COMPOSITION_LAYER_CYLINDER_EXTENSION_NAME,
-        XR_KHR_COMPOSITION_LAYER_EQUIRECT2_EXTENSION_NAME,
-        XR_KHR_ANDROID_SURFACE_SWAPCHAIN_EXTENSION_NAME,
-        XR_FB_COMPOSITION_LAYER_IMAGE_LAYOUT_EXTENSION_NAME,
-        XR_FB_COMPOSITION_LAYER_SETTINGS_EXTENSION_NAME,
-        XR_FB_PASSTHROUGH_EXTENSION_NAME,
-        XR_META_PERFORMANCE_METRICS_EXTENSION_NAME,
-    };
-    static constexpr size_t numRequiredExtensions =
-        sizeof(requiredExtensionNames) / sizeof(requiredExtensionNames[0]);
+OpenXrExtensions gExtensions = {};
 
-    BAIL_ON_ERR(XrCheckRequiredExtensions(&requiredExtensionNames[0], numRequiredExtensions),
-                XR_NULL_HANDLE);
+XrInstance XrInstanceCreate(JavaVM* const jvm, const jobject activityObject) {
+    const std::vector<std::string> availableExtensions = XrEnumerateAvailableExtensions();
+    const auto isAvailable = [&availableExtensions](const char* name) {
+        return std::find(availableExtensions.begin(), availableExtensions.end(), name) !=
+               availableExtensions.end();
+    };
+
+    // The only extension CitraVR cannot run without.
+    if (!isAvailable(XR_KHR_OPENGL_ES_ENABLE_EXTENSION_NAME)) {
+        ALOGE("Failed to find required extension {}", XR_KHR_OPENGL_ES_ENABLE_EXTENSION_NAME);
+        return XR_NULL_HANDLE;
+    }
+    std::vector<const char*> enabledExtensionNames = {XR_KHR_OPENGL_ES_ENABLE_EXTENSION_NAME};
+
+    // Everything else is enabled when offered, and the feature that needs it is
+    // skipped or replaced when not.
+    const auto enableIfAvailable = [&](const char* name, bool& isEnabled) {
+        isEnabled = isAvailable(name);
+        if (isEnabled) {
+            enabledExtensionNames.push_back(name);
+        } else {
+            ALOGW("Optional extension {} not available", name);
+        }
+    };
+    gExtensions = {};
+    enableIfAvailable(XR_KHR_ANDROID_CREATE_INSTANCE_EXTENSION_NAME,
+                      gExtensions.mAndroidCreateInstance);
+    enableIfAvailable(XR_EXT_PERFORMANCE_SETTINGS_EXTENSION_NAME, gExtensions.mPerformanceSettings);
+    enableIfAvailable(XR_KHR_ANDROID_THREAD_SETTINGS_EXTENSION_NAME,
+                      gExtensions.mAndroidThreadSettings);
+    enableIfAvailable(XR_KHR_COMPOSITION_LAYER_CYLINDER_EXTENSION_NAME,
+                      gExtensions.mCompositionLayerCylinder);
+    enableIfAvailable(XR_KHR_COMPOSITION_LAYER_EQUIRECT2_EXTENSION_NAME,
+                      gExtensions.mCompositionLayerEquirect2);
+    enableIfAvailable(XR_KHR_ANDROID_SURFACE_SWAPCHAIN_EXTENSION_NAME,
+                      gExtensions.mAndroidSurfaceSwapchain);
+    enableIfAvailable(XR_FB_COMPOSITION_LAYER_IMAGE_LAYOUT_EXTENSION_NAME,
+                      gExtensions.mCompositionLayerImageLayout);
+    enableIfAvailable(XR_FB_COMPOSITION_LAYER_SETTINGS_EXTENSION_NAME,
+                      gExtensions.mCompositionLayerSettings);
+    enableIfAvailable(XR_FB_PASSTHROUGH_EXTENSION_NAME, gExtensions.mPassthroughFB);
+    enableIfAvailable(XR_META_PERFORMANCE_METRICS_EXTENSION_NAME, gExtensions.mPerformanceMetrics);
+    enableIfAvailable(XR_VALVE_FRAME_CONTROLLER_INTERACTION_EXTENSION_NAME,
+                      gExtensions.mValveFrameControllerInteraction);
 
     XrApplicationInfo appInfo = {};
     strcpy(appInfo.applicationName, "Citra");
@@ -180,15 +191,23 @@ XrInstance XrInstanceCreate() {
     appInfo.engineVersion = 0;
     appInfo.apiVersion    = XR_CURRENT_API_VERSION;
 
+    // Runtimes that offer XR_KHR_android_create_instance (SteamVR in Lepton among
+    // them) expect the app's VM and activity at instance creation.
+    XrInstanceCreateInfoAndroidKHR androidCreateInfo = {};
+    androidCreateInfo.type = XR_TYPE_INSTANCE_CREATE_INFO_ANDROID_KHR;
+    androidCreateInfo.next = nullptr;
+    androidCreateInfo.applicationVM = jvm;
+    androidCreateInfo.applicationActivity = activityObject;
+
     XrInstanceCreateInfo ici  = {};
     ici.type                  = XR_TYPE_INSTANCE_CREATE_INFO;
-    ici.next                  = nullptr;
+    ici.next = gExtensions.mAndroidCreateInstance ? &androidCreateInfo : nullptr;
     ici.createFlags           = 0;
     ici.applicationInfo       = appInfo;
     ici.enabledApiLayerCount  = 0;
     ici.enabledApiLayerNames  = NULL;
-    ici.enabledExtensionCount = numRequiredExtensions;
-    ici.enabledExtensionNames = requiredExtensionNames;
+    ici.enabledExtensionCount = static_cast<uint32_t>(enabledExtensionNames.size());
+    ici.enabledExtensionNames = enabledExtensionNames.data();
 
     XrResult   initResult;
     XrInstance instanceLocal;
@@ -203,7 +222,7 @@ XrInstance XrInstanceCreate() {
         instanceInfo.type = XR_TYPE_INSTANCE_PROPERTIES;
         instanceInfo.next = NULL;
         OXR(xrGetInstanceProperties(instanceLocal, &instanceInfo));
-        ALOGV("Runtime {}: Version : {}.{}.{}", instanceInfo.runtimeName,
+        ALOGI("Runtime {}: Version : {}.{}.{}", instanceInfo.runtimeName,
               XR_VERSION_MAJOR(instanceInfo.runtimeVersion),
               XR_VERSION_MINOR(instanceInfo.runtimeVersion),
               XR_VERSION_PATCH(instanceInfo.runtimeVersion));
@@ -292,9 +311,23 @@ size_t GetMaxLayerCount(const XrInstance& instanceLocal, const XrSystemId& syste
 
     return systemProperties.graphicsProperties.maxLayerCount;
 }
+bool IsAlphaBlendSupported(const XrInstance& instanceLocal, const XrSystemId& systemId) {
+    uint32_t numBlendModes = 0;
+    OXR(xrEnumerateEnvironmentBlendModes(instanceLocal, systemId, OpenXr::VIEW_CONFIG_TYPE, 0,
+                                         &numBlendModes, nullptr));
+    std::vector<XrEnvironmentBlendMode> blendModes(numBlendModes);
+    OXR(xrEnumerateEnvironmentBlendModes(instanceLocal, systemId, OpenXr::VIEW_CONFIG_TYPE,
+                                         numBlendModes, &numBlendModes, blendModes.data()));
+    return std::find(blendModes.begin(), blendModes.end(), XR_ENVIRONMENT_BLEND_MODE_ALPHA_BLEND) !=
+           blendModes.end();
+}
 } // anonymous namespace
 
 XrInstance& OpenXr::GetInstance() { return instance; }
+
+const OpenXrExtensions& OpenXr::GetExtensions() {
+    return gExtensions;
+}
 
 int32_t OpenXr::Init(JavaVM* const jvm, const jobject activityObject) {
     for (int eye = 0; eye < 2; eye++) { mViewConfigurationViews[eye] = {}; }
@@ -456,7 +489,7 @@ int OpenXr::OpenXRInit(JavaVM* const jvm, const jobject activityObject) {
     /////////////////////////////////////
     // Create the OpenXR instance.
     /////////////////////////////////////
-    mInstance = XrInstanceCreate();
+    mInstance = XrInstanceCreate(jvm, activityObject);
     if (mInstance == XR_NULL_HANDLE) {
         ALOGE("Failed to create XR instance");
         return -2;
@@ -471,6 +504,8 @@ int OpenXr::OpenXRInit(JavaVM* const jvm, const jobject activityObject) {
     }
 
     mMaxLayerCount = GetMaxLayerCount(mInstance, mSystemId);
+    mAlphaBlendSupported = IsAlphaBlendSupported(mInstance, mSystemId);
+    ALOGI("Alpha-blend environment mode {}supported", mAlphaBlendSupported ? "" : "not ");
 
     ////////////////////////////////
     // Init EGL

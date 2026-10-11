@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CitraVR ROMs</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #ffffff; --text: #1d2026; --muted: #646b78;
+    --border: #dde1e7; --accent: #e8532f; --accent-text: #ffffff;
+    --danger: #c62828; --bar: #e9ecf1; --ok: #2e7d32;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a; --card: #1d2025; --text: #e8eaee; --muted: #9aa1ad;
+      --border: #30343b; --bar: #2a2e35; --danger: #ef5350; --ok: #66bb6a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px; margin-bottom: 16px;
+  }
+  #drop {
+    border: 2px dashed var(--border); border-radius: 10px; padding: 28px 16px;
+    text-align: center; cursor: pointer; transition: border-color .15s, background .15s;
+  }
+  #drop.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+  #drop strong { display: block; font-size: 16px; margin-bottom: 4px; }
+  #drop span { color: var(--muted); font-size: 13px; }
+  button {
+    font: inherit; border-radius: 6px; border: 1px solid var(--border);
+    background: transparent; color: var(--text); padding: 5px 12px; cursor: pointer;
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+  button.danger { color: var(--danger); }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--border); }
+  .row:first-child { border-top: none; }
+  .name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .size { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .progress { height: 6px; background: var(--bar); border-radius: 3px; overflow: hidden; margin-top: 6px; }
+  .progress > div { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+  .status { font-size: 13px; color: var(--muted); }
+  .status.error { color: var(--danger); }
+  .status.done { color: var(--ok); }
+  .head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 4px; }
+  .head h2 { font-size: 16px; margin: 0; }
+  .empty { color: var(--muted); padding: 8px 0; }
+  #message { color: var(--danger); }
+</style>
+</head>
+<body>
+<main>
+  <h1>CitraVR ROMs</h1>
+  <p class="sub" id="folder">Loading…</p>
+  <p id="message"></p>
+
+  <div class="card">
+    <div id="drop" tabindex="0">
+      <strong>Drop ROMs here or click to choose files</strong>
+      <span id="types"></span>
+    </div>
+    <input type="file" id="picker" multiple hidden>
+    <div id="uploads"></div>
+  </div>
+
+  <div class="card">
+    <div class="head">
+      <h2>ROMs on the headset</h2>
+      <button id="refresh">Refresh</button>
+    </div>
+    <div id="files"><div class="empty">Loading…</div></div>
+  </div>
+</main>
+<script>
+"use strict";
+let files = [];
+let extensions = [];
+const queue = [];
+let uploading = false;
+
+const $ = (id) => document.getElementById(id);
+
+function formatSize(bytes) {
+  if (bytes < 0) return "unknown";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let i = 0;
+  while (bytes >= 1024 && i < units.length - 1) { bytes /= 1024; i++; }
+  return (i === 0 ? bytes : bytes.toFixed(1)) + " " + units[i];
+}
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+async function api(method, path) {
+  const response = await fetch(path, { method, cache: "no-store" });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error || response.statusText);
+  return body;
+}
+
+async function loadFiles() {
+  try {
+    const data = await api("GET", "api/files");
+    $("message").textContent = "";
+    files = data.files;
+    extensions = data.extensions;
+    $("folder").textContent = "Folder: " + data.folder +
+      (data.freeBytes >= 0 ? " · " + formatSize(data.freeBytes) + " free" : "");
+    $("types").textContent = "Supported: " + extensions.map((e) => "." + e).join(" ");
+    $("picker").accept = extensions.map((e) => "." + e).join(",");
+    renderFiles();
+  } catch (e) {
+    $("message").textContent = e.message;
+    $("files").replaceChildren(el("div", "empty", "Could not load the list."));
+  }
+}
+
+function renderFiles() {
+  const container = $("files");
+  if (files.length === 0) {
+    container.replaceChildren(el("div", "empty", "No ROMs yet."));
+    return;
+  }
+  container.replaceChildren(...files.map((file) => {
+    const row = el("div", "row");
+    row.append(el("div", "name", file.path), el("div", "size", formatSize(file.size)));
+    const remove = el("button", "danger", "Delete");
+    remove.onclick = async () => {
+      if (!confirm("Delete " + file.path + " from the headset?")) return;
+      remove.disabled = true;
+      try {
+        await api("DELETE", "api/files?path=" + encodeURIComponent(file.path));
+      } catch (e) {
+        alert("Could not delete: " + e.message);
+      }
+      loadFiles();
+    };
+    row.append(remove);
+    return row;
+  }));
+}
+
+function addFiles(fileList) {
+  for (const file of fileList) {
+    const extension = file.name.split(".").pop().toLowerCase();
+    const row = el("div", "row");
+    const info = el("div", "name");
+    const status = el("div", "status");
+    const bar = el("div", "progress");
+    const fill = el("div");
+    bar.append(fill);
+    info.append(el("div", null, file.name), bar, status);
+    row.append(info, el("div", "size", formatSize(file.size)));
+    $("uploads").append(row);
+
+    if (!extensions.includes(extension)) {
+      status.textContent = "Not a supported ROM type";
+      status.className = "status error";
+      bar.remove();
+      continue;
+    }
+    let overwrite = false;
+    if (files.some((f) => f.path === file.name)) {
+      if (!confirm(file.name + " is already on the headset. Replace it?")) {
+        status.textContent = "Skipped";
+        bar.remove();
+        continue;
+      }
+      overwrite = true;
+    }
+    status.textContent = "Waiting…";
+    queue.push({ file, overwrite, status, fill, bar });
+  }
+  uploadNext();
+}
+
+function uploadNext() {
+  if (uploading || queue.length === 0) return;
+  uploading = true;
+  const item = queue.shift();
+  const xhr = new XMLHttpRequest();
+  const started = performance.now();
+  xhr.open("PUT", "api/upload?name=" + encodeURIComponent(item.file.name) +
+    (item.overwrite ? "&overwrite=1" : ""));
+  xhr.upload.onprogress = (event) => {
+    if (!event.lengthComputable) return;
+    const percent = event.loaded / event.total * 100;
+    const seconds = (performance.now() - started) / 1000;
+    item.fill.style.width = percent + "%";
+    item.status.textContent = percent.toFixed(0) + "% · " +
+      formatSize(event.loaded / Math.max(seconds, 0.001)) + "/s";
+  };
+  const finish = (ok, text) => {
+    item.status.textContent = text;
+    item.status.className = "status " + (ok ? "done" : "error");
+    if (ok) item.fill.style.width = "100%";
+    uploading = false;
+    loadFiles();
+    uploadNext();
+  };
+  xhr.onload = () => {
+    if (xhr.status === 200) {
+      finish(true, "Uploaded");
+    } else {
+      let error = xhr.statusText;
+      try { error = JSON.parse(xhr.responseText).error || error; } catch (_) {}
+      finish(false, "Failed: " + error);
+    }
+  };
+  xhr.onerror = () => finish(false, "Failed: connection lost");
+  xhr.send(item.file);
+}
+
+const drop = $("drop");
+drop.onclick = () => $("picker").click();
+drop.onkeydown = (event) => { if (event.key === "Enter" || event.key === " ") $("picker").click(); };
+$("picker").onchange = (event) => { addFiles(event.target.files); event.target.value = ""; };
+drop.ondragover = (event) => { event.preventDefault(); drop.classList.add("over"); };
+drop.ondragleave = () => drop.classList.remove("over");
+drop.ondrop = (event) => {
+  event.preventDefault();
+  drop.classList.remove("over");
+  addFiles(event.dataTransfer.files);
+};
+$("refresh").onclick = loadFiles;
+window.onbeforeunload = () => (uploading ? "Uploads are still running." : undefined);
+
+loadFiles();
+</script>
+</body>
+</html>

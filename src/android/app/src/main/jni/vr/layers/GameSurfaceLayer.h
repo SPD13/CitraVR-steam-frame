@@ -53,12 +53,13 @@ License     :   Licensed under GPLv3 or any later version.
 #pragma once
 
 #include "../OpenXR.h"
-#include "../Swapchain.h"
+#include "../SurfaceSwapchain.h"
 #include "../utils/Common.h"
 #include "core/3ds.h" // for 3ds screen sizes.
 
 #include <jni.h>
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -196,7 +197,14 @@ private:
 
     /** Creates the swapchain.
      */
-    void CreateSwapchain();
+    void CreateSwapchain(const jobject activityObject);
+
+    /** The sub-image showing a rectangle of the surface (in Android surface
+     *  coordinates): from the given region's swapchain, or from the whole
+     *  surface's swapchain if the region is -1.
+     */
+    XrSwapchainSubImage GetSubImage(const int region, const int32_t x, const int32_t y,
+                                    const int32_t width, const int32_t height) const;
 
     static constexpr uint32_t SURFACE_WIDTH_UNSCALED =
         NUM_EYES * Core::kScreenTopWidth;
@@ -210,7 +218,11 @@ private:
     static_assert((SURFACE_HEIGHT_UNSCALED % 2) == 0, "Swapchain height must be a multiple of 2");
 
     const XrSession mSession;
-    Swapchain       mSwapchain;
+    std::unique_ptr<SurfaceSwapchain> mSurfaceSwapchain;
+    // Regions of the surface with swapchains of their own (-1: the panel samples
+    // the whole surface's swapchain). See CreateSwapchain().
+    int mTopRegion = -1;
+    int mLowerRegion = -1;
 
     // Density scale for surface. Citra's auto-scale sets this as the internal
     // resolution.

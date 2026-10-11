@@ -80,7 +80,36 @@ enum class IntSetting(
         0
     ),
     UPDATE_CHECK_CHANNEL(SettingKeys.update_check_channel(), Settings.SECTION_MISC, 0),
-    VR_SI_MODE_REGISTER_OFFSET("vr_si_mode_register_offset", Settings.SECTION_VR, -1);
+    VR_SI_MODE_REGISTER_OFFSET("vr_si_mode_register_offset", Settings.SECTION_VR, -1),
+
+    // Controller mapping: the 3DS button each controller input presses, as the
+    // Android key code sent to the emulated gamepad (0: none). Shown per 3DS
+    // button by VrButtonMappingSetting.
+    // Defaults (keep in sync with vr_settings.h and config.cpp): the Nintendo
+    // layout on the face buttons (the 3DS's B where the Frame's A is), L/R on the
+    // bumpers, Select/Start on the stick clicks, ZL/ZR on the triggers, Home on
+    // View and the menu bar (VrButtonMappingSetting.MENU_BAR) on Menu. Headsets
+    // without bumpers or a right Menu button have L/R on the grips and the menu
+    // bar on the left Menu button. Triggers only press their button when pulled
+    // while the controller doesn't point at a panel (otherwise they click).
+    VR_MAP_A("vr_map_a", Settings.SECTION_VR, 97),
+    VR_MAP_B("vr_map_b", Settings.SECTION_VR, 96),
+    VR_MAP_X("vr_map_x", Settings.SECTION_VR, 100),
+    VR_MAP_Y("vr_map_y", Settings.SECTION_VR, 99),
+    VR_MAP_DPAD_UP("vr_map_dpad_up", Settings.SECTION_VR, 19),
+    VR_MAP_DPAD_DOWN("vr_map_dpad_down", Settings.SECTION_VR, 20),
+    VR_MAP_DPAD_LEFT("vr_map_dpad_left", Settings.SECTION_VR, 21),
+    VR_MAP_DPAD_RIGHT("vr_map_dpad_right", Settings.SECTION_VR, 22),
+    VR_MAP_LEFT_BUMPER("vr_map_left_bumper", Settings.SECTION_VR, if (IS_STEAM_FRAME) 102 else 0),
+    VR_MAP_RIGHT_BUMPER("vr_map_right_bumper", Settings.SECTION_VR, if (IS_STEAM_FRAME) 103 else 0),
+    VR_MAP_LEFT_GRIP("vr_map_left_grip", Settings.SECTION_VR, if (IS_STEAM_FRAME) 0 else 102),
+    VR_MAP_RIGHT_GRIP("vr_map_right_grip", Settings.SECTION_VR, if (IS_STEAM_FRAME) 0 else 103),
+    VR_MAP_LEFT_STICK_CLICK("vr_map_left_stick_click", Settings.SECTION_VR, 109),
+    VR_MAP_RIGHT_STICK_CLICK("vr_map_right_stick_click", Settings.SECTION_VR, 108),
+    VR_MAP_LEFT_TRIGGER("vr_map_left_trigger", Settings.SECTION_VR, 104),
+    VR_MAP_RIGHT_TRIGGER("vr_map_right_trigger", Settings.SECTION_VR, 105),
+    VR_MAP_LEFT_VIEW("vr_map_left_view", Settings.SECTION_VR, if (IS_STEAM_FRAME) 110 else 1000),
+    VR_MAP_RIGHT_MENU("vr_map_right_menu", Settings.SECTION_VR, if (IS_STEAM_FRAME) 1000 else 0);
 
     override var int: Int = defaultValue
 
@@ -114,3 +143,6 @@ enum class IntSetting(
         fun clear() = IntSetting.values().forEach { it.int = it.defaultValue }
     }
 }
+
+// Steam Frame (Lepton reports this model), for its controller mapping defaults.
+private val IS_STEAM_FRAME = android.os.Build.MODEL == "Lepton"

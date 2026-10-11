@@ -141,6 +141,8 @@ class Settings {
         const val SECTION_STORAGE = "Storage"
         const val SECTION_MISC = "Miscellaneous"
         const val SECTION_VR = "VR"
+        // Menu only: its settings are stored in SECTION_VR.
+        const val SECTION_VR_CONTROLLER_MAPPING = "VR Controller Mapping"
 
         const val KEY_BUTTON_A = "button_a"
         const val KEY_BUTTON_B = "button_b"

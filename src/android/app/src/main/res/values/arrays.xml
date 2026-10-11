@@ -638,6 +638,50 @@
         <item>1</item>
         <item>9</item>
     </integer-array>
+    <!-- Controller inputs that can press a 3DS button: none (-1), then the
+         inputs in the order of VrButtonMappingSetting.INPUTS. -->
+    <string-array name="vrInputNames">
+        <item>@string/vr_input_none</item>
+        <item>@string/vr_map_a</item>
+        <item>@string/vr_map_b</item>
+        <item>@string/vr_map_x</item>
+        <item>@string/vr_map_y</item>
+        <item>@string/vr_map_dpad_up</item>
+        <item>@string/vr_map_dpad_down</item>
+        <item>@string/vr_map_dpad_left</item>
+        <item>@string/vr_map_dpad_right</item>
+        <item>@string/vr_map_left_bumper</item>
+        <item>@string/vr_map_right_bumper</item>
+        <item>@string/vr_map_left_grip</item>
+        <item>@string/vr_map_right_grip</item>
+        <item>@string/vr_map_left_stick_click</item>
+        <item>@string/vr_map_right_stick_click</item>
+        <item>@string/vr_map_left_trigger</item>
+        <item>@string/vr_map_right_trigger</item>
+        <item>@string/vr_map_left_view</item>
+        <item>@string/vr_map_right_menu</item>
+    </string-array>
+    <integer-array name="vrInputValues">
+        <item>-1</item>
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+        <item>4</item>
+        <item>5</item>
+        <item>6</item>
+        <item>7</item>
+        <item>8</item>
+        <item>9</item>
+        <item>10</item>
+        <item>11</item>
+        <item>12</item>
+        <item>13</item>
+        <item>14</item>
+        <item>15</item>
+        <item>16</item>
+        <item>17</item>
+    </integer-array>
     <string-array name="vrBackgroundNames">
         <item>Passthrough</item>
         <item>Void (black)</item>

@@ -1,6 +1,7 @@
 package org.citra.citra_emu.vr
 
 import android.app.Activity
+import android.app.ActivityManager
 import android.app.ActivityOptions
 import android.content.Context
 import android.content.ContextWrapper
@@ -10,18 +11,25 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.Process
+import android.os.SystemClock
 import android.view.Display
 import android.view.View
 import org.citra.citra_emu.NativeLibrary
 import org.citra.citra_emu.activities.EmulationActivity
+import org.citra.citra_emu.features.romserver.RomServerService
 import org.citra.citra_emu.features.settings.ui.SettingsActivity
 import org.citra.citra_emu.features.settings.utils.SettingsFile
 import org.citra.citra_emu.fragments.EmulationFragment
 import org.citra.citra_emu.fragments.EmulationFragment.Companion
+import org.citra.citra_emu.model.Game
 import org.citra.citra_emu.ui.main.MainActivity
 import org.citra.citra_emu.utils.ButtonSwapUtils
 import org.citra.citra_emu.utils.EmulationMenuSettings
 import org.citra.citra_emu.utils.Log
+import org.citra.citra_emu.vr.ui.VrGameListLayer
+import org.citra.citra_emu.vr.utils.VRUtils
+import org.citra.citra_emu.vr.utils.VrControlCapture
 import kotlin.system.exitProcess
 
 
@@ -47,12 +55,16 @@ class VrActivity : EmulationActivity() {
         }
         hasRun = true
         currentActivity = this
+        VrControlCapture.isAvailable = true
         NativeLibrary.prepareGameSettings(intent.getLongExtra(EXTRA_SELECTED_TITLE_ID, 0L))
         mHandle = nativeOnCreate()
     }
 
     override fun onDestroy() {
        Log.info("VR [Java] onDestroy");
+        if (currentActivity == this) {
+            VrControlCapture.isAvailable = false
+        }
         currentActivity = null
         if (mHandle != 0L) {
             nativeOnDestroy(mHandle)
@@ -95,6 +107,11 @@ class VrActivity : EmulationActivity() {
         }
     }
 
+    // Called from native code while the settings wait for a button to map.
+    fun onVrControlPressed(input: Int) {
+        VrControlCapture.onControlPressed(input)
+    }
+
     fun forwardVRInput(keycode: Int, isPressed: Boolean) {
         val button = org.citra.citra_emu.vr.utils.VRUtils.ButtonType.androidToNativeLibrary(keycode)
             ?: return
@@ -126,7 +143,24 @@ class VrActivity : EmulationActivity() {
         runOnUiThread(clickRunnable)
     }
 
+    /** "Close Game" in the VR menu bar. */
     fun quitToMenu() {
+        // On Steam Frame, ending the VR session drops the user into the Steam
+        // interface, with CitraVR's 2D window left in the background. Offer the
+        // next game in VR instead.
+        if (VRUtils.hMDType == VRUtils.HMDType.STEAMFRAME.value) {
+            // Keep the pipeline cache fresh in case the user picks another game,
+            // which ends this process without stopping the core.
+            NativeLibrary.saveDiskShaderCaches()
+            if (VrGameListLayer.sVrGameListLayer.get()?.show() == true) {
+                return
+            }
+        }
+        exitToCitraWindow()
+    }
+
+    /** Ends the VR session and returns to CitraVR's 2D window. */
+    fun exitToCitraWindow() {
         // The exit button can deliver multiple events per click; only the
         // first call may relaunch MainActivity or duplicate panels appear.
         if (isQuitting) return
@@ -138,6 +172,47 @@ class VrActivity : EmulationActivity() {
         finish()
         val relaunchMainIntent = Intent(this, MainActivity::class.java)
         startActivity(relaunchMainIntent)
+    }
+
+    /**
+     * Closes CitraVR altogether (from the VR game list): the VR session, the 2D
+     * window and the ROM upload server, whose foreground service would otherwise
+     * keep the app running. The server's setting is kept, so it starts with the
+     * app next time.
+     */
+    fun quitCitra() {
+        if (isQuitting) return
+        isQuitting = true
+        Log.info("VR [Java] quitting CitraVR")
+        // As in exitToCitraWindow(): the core is never stopped on this path.
+        NativeLibrary.saveDiskShaderCaches()
+        stopService(Intent(this, RomServerService::class.java))
+        val activityManager = getSystemService(ActivityManager::class.java)
+        activityManager.appTasks.forEach { it.finishAndRemoveTask() }
+        // End the app's other processes (the 2D window's); this one ends in
+        // onDestroy(), after the VR session is torn down.
+        activityManager.runningAppProcesses
+            ?.filter { it.pid != Process.myPid() }
+            ?.forEach { Process.killProcess(it.pid) }
+        finishAndRemoveTask()
+    }
+
+    /**
+     * Starts [game] from the VR game list. A game can't be started in a VR process
+     * that already ran one, so this process ends and MainActivity starts the game
+     * in a new one once it's gone (see [launchGameFromIntentIfRequested]).
+     */
+    fun switchToGame(game: Game) {
+        if (isQuitting) return
+        isQuitting = true
+        Log.info("VR [Java] switching to ${game.title}")
+        NativeLibrary.saveDiskShaderCaches()
+        val relaunchMainIntent = Intent(this, MainActivity::class.java)
+            .putExtra(EXTRA_LAUNCH_GAME_PATH, game.path)
+            .putExtra(EXTRA_LAUNCH_GAME_TITLE, game.title)
+            .putExtra(EXTRA_LAUNCH_GAME_TITLE_ID, game.titleId)
+        startActivity(relaunchMainIntent)
+        finish()
     }
 
     fun pauseGame() {
@@ -178,6 +253,11 @@ class VrActivity : EmulationActivity() {
 
     companion object {
         const val EXTRA_ERROR_TWO_INSTANCES = "org.citra.citra_emu.vr.ERROR_TWO_INSTANCES"
+        private const val EXTRA_LAUNCH_GAME_PATH = "org.citra.citra_emu.vr.LAUNCH_GAME_PATH"
+        private const val EXTRA_LAUNCH_GAME_TITLE = "org.citra.citra_emu.vr.LAUNCH_GAME_TITLE"
+        private const val EXTRA_LAUNCH_GAME_TITLE_ID = "org.citra.citra_emu.vr.LAUNCH_GAME_TITLE_ID"
+        private const val VR_PROCESS_EXIT_TIMEOUT_MS = 5000L
+        private const val VR_PROCESS_POLL_INTERVAL_MS = 100L
         private const val EXTRA_SELECTED_TITLE_ID = "SelectedTitleId"
         var hasRun = false
         var currentActivity: VrActivity? = null
@@ -217,6 +297,40 @@ class VrActivity : EmulationActivity() {
             } else {
                 context.startActivity(intent, options.toBundle())
             }
+        }
+
+        /**
+         * Called by MainActivity with its intent: if the VR game list asked for a
+         * game ([switchToGame]), starts it once the previous VR process has exited.
+         */
+        fun launchGameFromIntentIfRequested(activity: Activity, intent: Intent?) {
+            val path = intent?.getStringExtra(EXTRA_LAUNCH_GAME_PATH) ?: return
+            val title = intent.getStringExtra(EXTRA_LAUNCH_GAME_TITLE)
+            val titleId = intent.getLongExtra(EXTRA_LAUNCH_GAME_TITLE_ID, 0L)
+            intent.removeExtra(EXTRA_LAUNCH_GAME_PATH)
+
+            val handler = Handler(Looper.getMainLooper())
+            val deadline = SystemClock.elapsedRealtime() + VR_PROCESS_EXIT_TIMEOUT_MS
+            handler.post(object : Runnable {
+                override fun run() {
+                    if (activity.isFinishing || activity.isDestroyed) {
+                        return
+                    }
+                    if (isVrProcessRunning(activity) && SystemClock.elapsedRealtime() < deadline) {
+                        handler.postDelayed(this, VR_PROCESS_POLL_INTERVAL_MS)
+                        return
+                    }
+                    Log.info("VR [Java] launching $title from the VR game list")
+                    launch(activity, path, title, titleId)
+                }
+            })
+        }
+
+        private fun isVrProcessRunning(context: Context): Boolean {
+            val activityManager = context.getSystemService(ActivityManager::class.java)
+            val vrProcessName = "${context.packageName}:vr_process"
+            return activityManager.runningAppProcesses?.any { it.processName == vrProcessName } ==
+                true
         }
 
         private fun getMainDisplay(context: Context): Int {

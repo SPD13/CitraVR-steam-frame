@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Game list shown in VR after "Close Game". The root must be wrap_content and
+     its children fixed-size: VrUILayer measures it to size the VR panel. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:background="@drawable/vr_menu_background"
+    android:backgroundTint="#0C1A27"
+    android:orientation="vertical"
+    android:padding="36dp">
+
+    <TextView
+        android:id="@+id/game_list_title"
+        android:layout_width="1000dp"
+        android:layout_height="wrap_content"
+        android:text="@string/vr_game_list_title"
+        android:textColor="@android:color/white"
+        android:textSize="40sp" />
+
+    <TextView
+        android:id="@+id/game_list_empty"
+        android:layout_width="1000dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="@string/vr_game_list_empty"
+        android:textColor="@android:color/white"
+        android:textSize="24sp"
+        android:visibility="gone" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/game_list"
+        android:layout_width="1000dp"
+        android:layout_height="560dp"
+        android:layout_marginTop="20dp"
+        android:scrollbars="vertical" />
+
+    <LinearLayout
+        android:layout_width="1000dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:gravity="end"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/button_quit"
+            style="@style/VrRibbonButtonStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="12dp"
+            android:paddingStart="28dp"
+            android:paddingEnd="28dp"
+            android:textSize="26sp"
+            android:text="@string/vr_game_list_quit" />
+
+        <Button
+            android:id="@+id/button_citra_window"
+            style="@style/VrRibbonButtonStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingStart="28dp"
+            android:paddingEnd="28dp"
+            android:textSize="26sp"
+            android:text="@string/vr_game_list_citra_window" />
+
+        <Button
+            android:id="@+id/button_back_to_game"
+            style="@style/VrRibbonButtonStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:paddingStart="28dp"
+            android:paddingEnd="28dp"
+            android:textSize="26sp"
+            android:text="@string/vr_game_list_back_to_game" />
+    </LinearLayout>
+</LinearLayout>

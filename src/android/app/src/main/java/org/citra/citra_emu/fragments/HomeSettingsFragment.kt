@@ -13,6 +13,7 @@ import android.view.ViewGroup.MarginLayoutParams
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
@@ -39,6 +40,7 @@ import org.citra.citra_emu.features.settings.utils.SettingsFile
 import org.citra.citra_emu.model.Game
 import org.citra.citra_emu.model.HomeSetting
 import org.citra.citra_emu.ui.main.MainActivity
+import org.citra.citra_emu.utils.FileUtil
 import org.citra.citra_emu.utils.GameHelper
 import org.citra.citra_emu.utils.GpuDriverHelper
 import org.citra.citra_emu.utils.Log
@@ -238,7 +240,7 @@ class HomeSettingsFragment : Fragment() {
         }
 
     private fun shareLog() {
-        val logDirectory = DocumentFile.fromTreeUri(
+        val logDirectory = FileUtil.directoryDocument(
             requireContext(),
             PermissionsHandler.citraDirectory
         )?.findFile("log")
@@ -248,12 +250,25 @@ class HomeSettingsFragment : Fragment() {
         val intent = Intent().apply {
             action = Intent.ACTION_SEND
             type = "text/plain"
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
+        // A user folder set as a plain path gives file:// URIs, which can't be shared;
+        // share them through the app's FileProvider instead.
+        fun shareableUri(uri: android.net.Uri): android.net.Uri =
+            if (FileUtil.isFileUri(uri)) {
+                FileProvider.getUriForFile(
+                    requireContext(),
+                    "${requireContext().packageName}.fileprovider",
+                    java.io.File(uri.path!!)
+                )
+            } else {
+                uri
+            }
         if (!Log.gameLaunched && oldLog?.exists() == true) {
-            intent.putExtra(Intent.EXTRA_STREAM, oldLog.uri)
+            intent.putExtra(Intent.EXTRA_STREAM, shareableUri(oldLog.uri))
             startActivity(Intent.createChooser(intent, getText(R.string.share_log)))
         } else if (currentLog?.exists() == true) {
-            intent.putExtra(Intent.EXTRA_STREAM, currentLog.uri)
+            intent.putExtra(Intent.EXTRA_STREAM, shareableUri(currentLog.uri))
             startActivity(Intent.createChooser(intent, getText(R.string.share_log)))
         } else {
             Toast.makeText(

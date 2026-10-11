@@ -99,6 +99,11 @@ Java_org_citra_citra_1emu_vr_ui_VrUILayer_00024Companion_nativeSetBounds(JNIEnv*
 
 static constexpr std::chrono::milliseconds kMinTimeBetweenChecks(500);
 
+// How long a trigger pull takes, and how much cursor history is kept to place
+// presses where the user aimed (see UILayer::SendClickToUI()).
+constexpr std::chrono::milliseconds kTriggerPullDuration(120);
+constexpr std::chrono::milliseconds kCursorHistoryDuration(500);
+
 // Get density on an interval
 float GetDensitySysprop() {
     const float                                               kDefaultDensity = 1200;
@@ -183,7 +188,7 @@ void UILayer::Frame(const XrSpace&                   space,
     XrCompositionLayerQuad layer = {};
 
     layer.type       = XR_TYPE_COMPOSITION_LAYER_QUAD;
-    layer.next       = &kVerticalFlipLayout;
+    layer.next = mSurfaceSwapchain->GetLayerNext();
     layer.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
     layer.layerFlags |= XR_COMPOSITION_LAYER_CORRECT_CHROMATIC_ABERRATION_BIT;
     layer.layerFlags |= XR_COMPOSITION_LAYER_UNPREMULTIPLIED_ALPHA_BIT;
@@ -193,26 +198,55 @@ void UILayer::Frame(const XrSpace&                   space,
 
     layer.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
     memset(&layer.subImage, 0, sizeof(XrSwapchainSubImage));
-    layer.subImage.swapchain               = mSwapchain.mHandle;
+    const Swapchain& swapchain = mSurfaceSwapchain->GetSwapchain();
+    layer.subImage.swapchain = swapchain.mHandle;
     layer.subImage.imageRect.offset.x      = 0;
     layer.subImage.imageRect.offset.y      = 0;
-    layer.subImage.imageRect.extent.width  = mSwapchain.mWidth;
-    layer.subImage.imageRect.extent.height = mSwapchain.mHeight;
+    layer.subImage.imageRect.extent.width = swapchain.mWidth;
+    layer.subImage.imageRect.extent.height = swapchain.mHeight;
     layer.subImage.imageArrayIndex         = 0;
     layer.pose                             = mWorldFromPanel;
-    const auto scale  = GetDensityScaleForSize(mSwapchain.mWidth, mSwapchain.mHeight, 1.0f);
+    const auto scale = GetDensityScaleForSize(swapchain.mWidth, swapchain.mHeight, 1.0f);
     layer.size.width  = scale.x;
     layer.size.height = scale.y;
     layers[layerCount++].mQuad = layer;
+    if (!mHasLoggedFirstFrame) {
+        mHasLoggedFirstFrame = true;
+        ALOGI("UILayer {}x{}: first submitted at ({}, {}, {}), size {}x{} m", swapchain.mWidth,
+              swapchain.mHeight, layer.pose.position.x, layer.pose.position.y,
+              layer.pose.position.z, layer.size.width, layer.size.height);
+    }
+}
+
+bool UILayer::IsRayOnPanel(const XrVector3f& start, const XrVector3f& end) const {
+    const Swapchain& swapchain = mSurfaceSwapchain->GetSwapchain();
+    const XrVector2f scale = GetDensityScaleForSize(swapchain.mWidth, swapchain.mHeight, 1.0f);
+    XrVector2f result2d;
+    XrPosef result3d;
+    return ::GetRayIntersectionWithPanel(mWorldFromPanel, swapchain.mWidth, swapchain.mHeight,
+                                         scale, start, end, result2d, result3d);
 }
 
 bool UILayer::GetRayIntersectionWithPanel(const XrVector3f& start,
                                           const XrVector3f& end,
                                           XrVector2f&       result2d,
                                           XrPosef&          result3d) const {
-    const XrVector2f scale = GetDensityScaleForSize(mSwapchain.mWidth, mSwapchain.mHeight, 1.0f);
-    return ::GetRayIntersectionWithPanel(mWorldFromPanel, mSwapchain.mWidth, mSwapchain.mHeight,
-                                         scale, start, end, result2d, result3d);
+    const Swapchain& swapchain = mSurfaceSwapchain->GetSwapchain();
+    const XrVector2f scale = GetDensityScaleForSize(swapchain.mWidth, swapchain.mHeight, 1.0f);
+    const bool isHit = ::GetRayIntersectionWithPanel(mWorldFromPanel, swapchain.mWidth,
+                                                     swapchain.mHeight, scale, start, end,
+                                                     result2d, result3d);
+    if (!isHit) {
+        mCursorHistory.clear();
+        return false;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    mCursorHistory.push_back({now, result2d});
+    while (mCursorHistory.size() > 1 &&
+           now - mCursorHistory.front().mTime > kCursorHistoryDuration) {
+        mCursorHistory.pop_front();
+    }
+    return true;
 }
 
 // Next error code: -9
@@ -242,16 +276,24 @@ int32_t UILayer::Init(const jclass classObject, const jobject activityObject,
 
     BAIL_ON_COND(mSendScrollToUIMethodID == nullptr, "could not find sendScrollToUI()", -8);
 
-    BAIL_ON_ERR(CreateSwapchain(), -7);
+    BAIL_ON_ERR(CreateSwapchain(activityObject), -7);
 
     return 0;
 }
 
 void UILayer::Shutdown() {
-    xrDestroySwapchain(mSwapchain.mHandle);
-    mSwapchain.mHandle = XR_NULL_HANDLE;
-    mSwapchain.mWidth  = 0;
-    mSwapchain.mHeight = 0;
+    // Stop the virtual display drawing into the surface before it goes away.
+    if (mVrUILayerObject != nullptr) {
+        const jmethodID releaseMethodID = mEnv->GetMethodID(mVrUILayerClass, "release", "()V");
+        if (releaseMethodID != nullptr) {
+            mEnv->CallVoidMethod(mVrUILayerObject, releaseMethodID);
+        }
+        if (mEnv->ExceptionCheck()) {
+            mEnv->ExceptionDescribe();
+            mEnv->ExceptionClear();
+        }
+    }
+    mSurfaceSwapchain.reset();
     mVrUILayerClass    = nullptr;
     // These steps are not strictly necessary for app shutdown, as references are cleaned up when
     // the JVM is destroyed, but memory-saving if this class is destroyed/re-initialized at runtime.
@@ -259,7 +301,9 @@ void UILayer::Shutdown() {
     mVrUILayerObject = nullptr;
 }
 
-int UILayer::CreateSwapchain() {
+int UILayer::CreateSwapchain(const jobject activityObject) {
+    uint32_t width = 0;
+    uint32_t height = 0;
     {
         AndroidWindowBounds viewBounds;
         if (mEnv->ExceptionCheck()) { mEnv->ExceptionClear(); }
@@ -280,42 +324,18 @@ int UILayer::CreateSwapchain() {
                   viewBounds.Height());
             return -2;
         }
-        mSwapchain.mWidth  = viewBounds.Width();
-        mSwapchain.mHeight = viewBounds.Height();
+        width = viewBounds.Width();
+        height = viewBounds.Height();
     }
     // Initialize swapchain.
     {
-        XrSwapchainCreateInfo swapchainCreateInfo;
-        memset(&swapchainCreateInfo, 0, sizeof(swapchainCreateInfo));
-        swapchainCreateInfo.type = XR_TYPE_SWAPCHAIN_CREATE_INFO;
-        swapchainCreateInfo.next = nullptr;
-        swapchainCreateInfo.usageFlags =
-            XR_SWAPCHAIN_USAGE_SAMPLED_BIT | XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;
-        swapchainCreateInfo.format      = 0;
-        swapchainCreateInfo.sampleCount = 0;
-        swapchainCreateInfo.width       = mSwapchain.mWidth;
-        swapchainCreateInfo.height      = mSwapchain.mHeight;
-        swapchainCreateInfo.faceCount   = 0;
-        swapchainCreateInfo.arraySize   = 0;
-        swapchainCreateInfo.mipCount    = 0;
+        mSurfaceSwapchain = std::make_unique<SurfaceSwapchain>(mSession, mEnv, activityObject, width,
+                                                               height);
 
-        PFN_xrCreateSwapchainAndroidSurfaceKHR pfnCreateSwapchainAndroidSurfaceKHR = nullptr;
-        assert(OpenXr::GetInstance() != XR_NULL_HANDLE);
-        XrResult xrResult =
-            xrGetInstanceProcAddr(OpenXr::GetInstance(), "xrCreateSwapchainAndroidSurfaceKHR",
-                                  (PFN_xrVoidFunction*)(&pfnCreateSwapchainAndroidSurfaceKHR));
-        if (xrResult != XR_SUCCESS || pfnCreateSwapchainAndroidSurfaceKHR == nullptr) {
-            FAIL("xrGetInstanceProcAddr failed for "
-                 "xrCreateSwapchainAndroidSurfaceKHR");
-        }
+        ALOGD("UILayer: created swapchain {}x{}", width, height);
 
-        OXR(pfnCreateSwapchainAndroidSurfaceKHR(mSession, &swapchainCreateInfo, &mSwapchain.mHandle,
-                                                &mSurface));
-
-        ALOGD("UILayer: created swapchain {}x{}", mSwapchain.mWidth, mSwapchain.mHeight);
-
-        mEnv->CallIntMethod(mVrUILayerObject, mSetSurfaceMethodId, mSurface, (int)mSwapchain.mWidth,
-                            (int)mSwapchain.mHeight);
+        mEnv->CallIntMethod(mVrUILayerObject, mSetSurfaceMethodId, mSurfaceSwapchain->GetSurface(),
+                            (int)width, (int)height);
         if (mEnv->ExceptionCheck()) {
             mEnv->ExceptionDescribe();
             mEnv->ExceptionClear();
@@ -325,8 +345,27 @@ int UILayer::CreateSwapchain() {
     return 0;
 }
 
+void UILayer::UpdateSurface() {
+    mSurfaceSwapchain->Update();
+}
+
 void UILayer::SendClickToUI(const XrVector2f& pos2d, const int type) {
-    mEnv->CallIntMethod(mVrUILayerObject, mSendClickToUIMethodID, pos2d.x, pos2d.y, type);
+    // Pulling the trigger tilts the controller, and the press only registers at
+    // the end of the pull: by then the cursor has dropped by a few centimeters,
+    // enough to miss a small button. Place the press where the cursor was just
+    // before the pull (or where it entered the panel, if more recently).
+    XrVector2f position = pos2d;
+    if (type == 1 && !mCursorHistory.empty()) {
+        const auto aimedTime = std::chrono::steady_clock::now() - kTriggerPullDuration;
+        position = mCursorHistory.front().mPosition;
+        for (const CursorSample& sample : mCursorHistory) {
+            if (sample.mTime > aimedTime) {
+                break;
+            }
+            position = sample.mPosition;
+        }
+    }
+    mEnv->CallIntMethod(mVrUILayerObject, mSendClickToUIMethodID, position.x, position.y, type);
 }
 
 void UILayer::SendScrollToUI(const XrVector2f& pos2d, const XrVector2f& scroll2d) {

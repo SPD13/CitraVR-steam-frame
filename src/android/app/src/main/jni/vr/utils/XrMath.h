@@ -303,7 +303,7 @@ public:
         } else {
             const float s = 2.0f * sqrtf(1.0f + forward.z - right.x - up.y);
             return XrQuaternionf{(forward.x + right.z) / s, (forward.y + up.z) / s, 0.25f * s,
-                                 (up.z - forward.y) / s};
+                                 (right.y - up.x) / s};
         }
     }
 
