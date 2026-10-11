@@ -22,9 +22,13 @@
   <a href="#license">License</a>
 </p>
 
-> **This is a fork of [amwatson/CitraVR](https://github.com/amwatson/CitraVR), focused on making CitraVR run on the Valve Steam Frame.** It keeps Quest support and adds a Steam Frame edition, installed into the Frame's Steam library as **Citra VR - Steam Frame Edition**. See the **[Steam Frame guide](STEAM_FRAME.md)** to build and install it. Quest releases come from the original repository.
+> **This is a fork of [amwatson/CitraVR](https://github.com/amwatson/CitraVR), focused on making CitraVR run on the Valve Steam Frame.** It was built with extensive help from AI and uses AI-generated content. It is a Steam Frame edition, installed into the Frame's Steam library as **Citra VR - Steam Frame Edition**, and doesn't target Quest. See the **[Steam Frame guide](STEAM_FRAME.md)** to build and install it. For Quest, use the [original repository](https://github.com/amwatson/CitraVR).
 
 ## Steam Frame Edition
+
+[![Watch the CitraVR Steam Frame Edition trailer](https://img.youtube.com/vi/OYyzNZYnA1I/maxresdefault.jpg)](https://youtu.be/OYyzNZYnA1I)
+
+*Click the image to watch the trailer on YouTube.*
 
 **The primary goal of this fork is Steam Frame compatibility.** The Frame runs Android apps through **Lepton**, Valve's Android container on SteamOS, with **SteamVR** as the OpenXR runtime. Stock CitraVR doesn't start there, because it depends on Meta-only OpenXR extensions that SteamVR doesn't offer. This fork makes those optional, replaces the ones CitraVR can't do without, and adds what's needed to use CitraVR comfortably on the Frame.
 
