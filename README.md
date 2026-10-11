@@ -210,7 +210,7 @@ export ANDROID_HOME=/path/to/android/sdk      # or put sdk.dir=... in local.prop
 cd ../.. && ./register-frame.sh               # installs it on frame.local (FRAME_HOST=<ip> otherwise)
 ```
 
-`register-frame.sh` copies the APK and the files in `steam-frame/` to the headset and runs the same installer there; `./register-frame.sh --uninstall` removes it. To avoid typing the password at each step, copy your ssh key once: `ssh-copy-id steamos@frame.local`. The APK built this way is signed with your own development key: to switch between it and a release, uninstall first.
+`register-frame.sh` copies the APK and the files in `steam-frame/` to the headset and runs the same installer there; `./register-frame.sh --uninstall` removes it. To avoid typing the password at each step, copy your ssh key once: `ssh-copy-id steamos@frame.local`. Switching between your own builds and releases needs nothing special: Lepton installs the APK afresh at each launch and keeps the app's data.
 
 ### Alternative: install with adb
 
@@ -234,7 +234,7 @@ For development, you can sideload the APK into **Lepton Development** instead: s
 
 `tools/make-release.sh vX.Y.Z` tags the commit, builds the APK signed with the project's **release key**, checks the signature, and packages the release files (the APK, `install.sh`, the `steam-frame/` files and `SHA256SUMS`) in `build/release/vX.Y.Z`; with `--publish` it pushes the tag and creates the GitHub release. The release key's certificate SHA-256 fingerprint is `08:AF:DA:F9:C8:B2:0E:4D:9F:01:CF:1A:D4:78:0D:2A:28:E2:DD:36:69:B6:29:EB:C6:E8:6A:F5:E8:C3:98:84`.
 
-Every release must be signed with this same key, or it won't install over the previous one. The key (`~/.config/citravr-steam-frame/release.keystore`, with its password in the macOS Keychain item `citravr-steam-frame-release-key`) is never committed: keep a backup of both outside this computer, as described in [STEAM_FRAME.md](STEAM_FRAME.md#release-key).
+Every release must be signed with this same key, or it won't install as an update over the previous one where Android checks it (Lepton Development, Quest; the Steam library entry reinstalls at each launch). The key (`~/.config/citravr-steam-frame/release.keystore`, with its password in the macOS Keychain item `citravr-steam-frame-release-key`) is never committed: keep a backup of both outside this computer, as described in [STEAM_FRAME.md](STEAM_FRAME.md#release-key).
 
 ## Introduction
 I originally created this project to a be a proof-of-concept of some techniques XR developers were curious about. 

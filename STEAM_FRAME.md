@@ -158,7 +158,7 @@ Report each of these, with the logcat for any that fail:
 
 ## Release key
 
-Releases are signed with the project's release key, so each release installs over the previous one. Android refuses an update signed with another key: if the key is lost, users have to uninstall CitraVR before installing a release signed with a new one (their folders and saves stay on the headset).
+Releases are signed with the project's release key, so each release installs over the previous one wherever Android installs it as an update: with `adb install -r` (Lepton Development) or on Quest, Android refuses an update signed with another key, and the app would have to be uninstalled first (losing its settings there). The Steam library entry isn't affected: Lepton installs the APK afresh at each launch and keeps the app's data separately. Keep the key anyway, as other installs depend on it.
 
 - **Where it is:** `~/.config/citravr-steam-frame/release.keystore` (PKCS12, alias `citravr-steam-frame`, valid until 2054) on the maintainer's computer, readable only by its user; its password is in the macOS Keychain, item `citravr-steam-frame-release-key`. `tools/make-release.sh` reads both.
 - **Certificate SHA-256 fingerprint:** `08:AF:DA:F9:C8:B2:0E:4D:9F:01:CF:1A:D4:78:0D:2A:28:E2:DD:36:69:B6:29:EB:C6:E8:6A:F5:E8:C3:98:84`. It's public: `apksigner verify --print-certs` on a downloaded APK shows it.
