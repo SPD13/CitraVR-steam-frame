@@ -65,7 +65,7 @@ cd src/android
 # -> app/build/outputs/apk/release/app-release.apk
 ```
 
-You need JDK 17, Android SDK platform 35, and NDK `27.3.13750724`. The GitHub Actions workflow (`.github/workflows/android.yml`) builds the same APK on every push and uploads it as an artifact.
+You need JDK 17, Android SDK platform 35, and NDK `27.3.13750724`. There's no CI build: build locally, and use `tools/make-release.sh` for releases.
 
 ## Installing
 

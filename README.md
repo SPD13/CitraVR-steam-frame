@@ -96,7 +96,7 @@ Passthrough and the immersive modes haven't been checked on the headset yet. The
 - **Library artwork:** capsule, wide capsule, hero banner, logo and icon, generated from the CitraVR logo by `steam-frame/make_library_art.py`.
 
 **Development**
-- **CI builds:** a GitHub Actions workflow builds the APK on every push.
+- **Local builds:** there's no CI; APKs and releases are built locally (see the [Steam Frame guide](STEAM_FRAME.md) and `tools/make-release.sh`).
 - **Panel dumps:** `adb shell setprop debug.citra.dump_swapchains 1` saves what the app sends to the runtime for each VR panel, which helps debug visuals without wearing the headset. `2` saves the next 30 frames instead, and `debug.citra.dump_width` limits dumps to the panels of one width.
 - **Lower screen resolution:** `adb shell setprop debug.citra.lower_panel_resolution <factor>` changes the lower screen's resolution while a game runs (multiples of 320×240, default 2, up to 3).
 - **[STEAM_FRAME.md](STEAM_FRAME.md):** technical notes, install guide, testing checklist and known limitations.
