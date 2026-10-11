@@ -495,6 +495,8 @@ void Config::ReadValues() {
         android_config->GetBoolean("VR", "vr_show_controllers", true);
     VRSettings::values.vr_show_pointer_ray =
         android_config->GetBoolean("VR", "vr_show_pointer_ray", true);
+    VRSettings::values.vr_show_controller_diagram =
+        android_config->GetBoolean("VR", "vr_show_controller_diagram", true);
     for (size_t i = 0; i < VRSettings::kNumVrControls; i++) {
         const VRSettings::VrControlMapping& mapping = VRSettings::kVrControlMappings[i];
         int32_t defaultKeyCode = mapping.defaultKeyCode;

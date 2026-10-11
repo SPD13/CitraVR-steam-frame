@@ -118,6 +118,7 @@ struct Values {
     std::string            vr_immersive_eye_indicator;
     bool                   vr_show_controllers                 = true;
     bool                   vr_show_pointer_ray                 = true;
+    bool                   vr_show_controller_diagram          = true;
     // The 3DS button (Android key code, 0: none) of each VrControl.
     std::array<int32_t, kNumVrControls> vr_button_map = DefaultVrButtonMap();
 } extern values;

@@ -67,6 +67,11 @@ Passthrough and the immersive modes haven't been checked on the headset yet. The
 - **Per game:** with **Per-game** selected in the in-game settings, the mapping is saved for the running game only. Changes apply right away, also mid-game.
 - **Resets and copies:** **Reset to default** puts every button back on its default (globally, or for the game). With **Per-game** selected, **Apply to global** makes the game's mapping the global one, and **Use the global mapping** removes the game's own mapping.
 
+**Controller diagram in VR**
+- **Where:** a panel 90° to the left of the game shows the Steam Frame controllers: turn your head to check which button does what, without leaving the game.
+- **Live labels:** the labels come from the mapping in use, per-game mapping included, and change as soon as you remap a button, also from the in-game settings.
+- **Setting:** **Show controller diagram** in the VR settings (on by default) hides it, right away.
+
 **One-question setup and folders that survive updates**
 - **First launch:** when CitraVR has all-files access (always on Steam Frame), first launch asks a single question: *Do you want to manually configure Citra directories?* Answering **No** creates `/storage/emulated/0/CitraVR` (data) and `/storage/emulated/0/CitraVR/games` (games) and goes straight to the game list.
 - **Plain paths:** CitraVR's folders are used as plain file-system paths rather than grants from Android's folder picker. Lepton drops picker grants on every app update; plain paths aren't affected. Folders picked earlier are switched to plain paths automatically.
@@ -122,6 +127,12 @@ Passthrough and the immersive modes haven't been checked on the headset yet. The
 **A/B and X/Y are swapped on purpose:** the Frame's buttons follow the Xbox layout (A at the bottom, B on the right), while the 3DS has A on the right and B at the bottom (and X at the top, Y on the left). Swapping them puts each 3DS button where it sits on a 3DS, so the Frame's B presses the 3DS's A, A presses B, Y presses X and X presses Y.
 
 All of this can be changed in **Settings → VR → Controller mapping**, also in game from the menu bar's **Settings** tab (see [Controller mapping](#what-this-fork-adds)).
+
+### Controller diagram in VR
+
+In VR, turn your head to the left: a panel shows the controllers labelled with the current mapping, and it follows any change you make (per game too). **Show controller diagram** in the VR settings hides it.
+
+![The controller diagram panel in VR, labelled with the default mapping](docs/images/vr-controller-diagram.png)
 
 ### Pointing and clicking
 

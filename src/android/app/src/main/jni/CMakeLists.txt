@@ -37,6 +37,7 @@ add_library(citra-android SHARED
     vr/XrController.cpp
     vr/vr_main.cpp
     vr/vr_settings.cpp
+    vr/layers/ControllerDiagramLayer.cpp
     vr/layers/ControllerLayer.cpp
     vr/layers/CursorLayer.cpp
     vr/layers/GameSurfaceLayer.cpp

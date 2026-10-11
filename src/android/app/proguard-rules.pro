@@ -31,4 +31,5 @@
 -keep class org.citra.citra_emu.vr.ui.VrRibbonLayer { *; }
 -keep class org.citra.citra_emu.vr.utils.SurfaceTextureFrameListener { *; }
 -keep class org.citra.citra_emu.vr.ui.VrGameListLayer { *; }
+-keep class org.citra.citra_emu.vr.ui.VrControllerDiagramLayer { *; }
 -keepattributes SourceFile,LineNumberTable
