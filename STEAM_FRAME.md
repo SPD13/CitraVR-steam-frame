@@ -36,6 +36,8 @@ On Steam Frame controllers (if SteamVR accepts the Frame controller profile), by
 | Right Menu button | Show/hide the menu bar |
 | Triggers | Pointer click (on a panel); ZL, ZR elsewhere |
 
+In VR, a panel 90° to the left shows the controllers labelled with the current mapping (VR setting **Show controller diagram**, on by default).
+
 The buttons can be remapped in **Settings → VR → Controller mapping** (also in game, from the menu bar's **Settings** tab, globally or per game): tap a 3DS button, then press the controller button to use for it. Each 3DS button gets one controller button, A/B/X/Y, the d-pad, bumpers, grips, thumbstick clicks or triggers. The View and Menu buttons are mappable too, and showing/hiding the menu bar has its own row (on Menu by default; with no button for it, the menu bar stays shown). A trigger still clicks when its controller points at a panel (and that controller becomes the pointer); it presses its 3DS button only when pulled while pointing elsewhere. The sticks keep their roles.
 
 If the Frame profile is rejected, SteamVR maps the Frame controllers onto the Quest Touch bindings. In that case, Frame's three upper face buttons on each side act as Touch B/Y.

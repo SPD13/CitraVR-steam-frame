@@ -54,6 +54,7 @@ Passthrough and the immersive modes haven't been checked on the headset yet. The
 - **Controllers:** your controllers are drawn in VR, using SteamVR's own render models of the Steam Frame controllers, read from the headset's SteamVR install and placed with the models' `openxr_aim` reference, as SteamVR places them.
 - **Pointer ray:** a ray runs from the pointing controller to the cursor, so you can see where you point. When it points at nothing, a short ray fades out.
 - **Reliable clicks:** a press counts where you aimed just before pulling the trigger (the pull tilts the controller), and small hand movements while the trigger is held don't turn a click into a drag. Moving further still drags, e.g. to scroll a list.
+- **Controller diagram:** to the left of the game (turn your head 90°), a panel shows the Steam Frame controllers labelled with the current mapping, per-game mappings and changes included, updated as you remap. **Show controller diagram** in the VR settings hides it (on by default; it applies right away).
 - **Settings:** **Show controllers** and **Show pointer ray** in the VR settings turn each on or off (both on by default; they apply from the next game start).
 - **How:** SteamVR on Steam Frame draws quad layers over projection layers whatever their order, so both are quad layers, which it sorts by depth among the panels. The ray is a thin quad along the ray, turned towards the head. Each controller is drawn, per eye, into a quad at the controller that faces that eye and is shown to it only, rendered from that eye's position so the stereo pair is exact. Where no model is found (e.g. on Quest), only the ray is drawn.
 
@@ -120,6 +121,8 @@ Passthrough and the immersive modes haven't been checked on the headset yet. The
 | Menu (right) | Show/hide the menu bar |
 
 **A/B and X/Y are swapped on purpose:** the Frame's buttons follow the Xbox layout (A at the bottom, B on the right), while the 3DS has A on the right and B at the bottom (and X at the top, Y on the left). Swapping them puts each 3DS button where it sits on a 3DS, so the Frame's B presses the 3DS's A, A presses B, Y presses X and X presses Y.
+
+In VR, turn your head to the left to see the controllers labelled with the current mapping (**Show controller diagram** in the VR settings hides it).
 
 All of this can be changed in **Settings → VR → Controller mapping**, also in game from the menu bar's **Settings** tab (see [Controller mapping](#what-this-fork-adds)).
 

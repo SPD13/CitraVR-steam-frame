@@ -7,11 +7,21 @@ Label boxes are pixel positions in that 2400x1224 image. Needs Pillow and the
 Avenir Next font (macOS).
 
 Usage: python make_controls_image.py <source.png> docs/images/steam-frame-controls.png
+
+With --blank <width>, writes the drawing without any labels, scaled to that
+width: the base of the in-VR controller diagram, whose labels the app draws
+from the current mapping (VrControllerDiagramLayer, which uses the same label
+boxes):
+python make_controls_image.py --blank 1600 <source.png> src/android/app/src/main/res/drawable-nodpi/vr_controller_diagram.png
 """
 import sys
 
 from PIL import Image, ImageDraw, ImageFont
 
+BLANK_WIDTH = None
+if sys.argv[1] == "--blank":
+    BLANK_WIDTH = int(sys.argv[2])
+    del sys.argv[1:3]
 SOURCE, OUTPUT = sys.argv[1], sys.argv[2]
 FONT_PATH = "/System/Library/Fonts/Avenir Next.ttc"
 DEMI_BOLD = 2
@@ -70,6 +80,8 @@ def draw_text(x, y, text, f, fill):
 def label(box, lines, align="center", valign="center", f=font, fill=WHITE, line_height=LINE_HEIGHT):
     """Replaces the label in `box` with `lines`, aligned like the original."""
     erase(box)
+    if BLANK_WIDTH is not None:
+        return
     x0, y0, x1, y1 = box
     height = line_height * len(lines)
     if valign == "bottom":
@@ -116,9 +128,13 @@ label((1440, 1080, 2230, 1150),
        "and press ZL / ZR when pointing anywhere else"],
       f=small_font, fill=ACCENT, line_height=36)
 
-# Title.
-title = "CitraVR on Steam Frame: default controls"
-draw.text(((image.width - title_font.getlength(title)) / 2, 50), title, font=title_font, fill=WHITE)
+if BLANK_WIDTH is None:
+    title = "CitraVR on Steam Frame: default controls"
+    draw.text(((image.width - title_font.getlength(title)) / 2, 50), title, font=title_font,
+              fill=WHITE)
+else:
+    image = image.resize((BLANK_WIDTH, round(image.height * BLANK_WIDTH / image.width)),
+                         Image.LANCZOS)
 
 image.save(OUTPUT, optimize=True)
 print("saved", OUTPUT, image.size)

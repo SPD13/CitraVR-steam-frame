@@ -129,7 +129,8 @@ enum class BooleanSetting(
     CHECK_FOR_UPDATES(SettingKeys.check_for_update_on_start(), Settings.SECTION_MISC, true),
     VR_EXTRA_PERFORMANCE_MODE("vr_extra_performance_mode", Settings.SECTION_VR, false),
     VR_SHOW_CONTROLLERS("vr_show_controllers", Settings.SECTION_VR, true),
-    VR_SHOW_POINTER_RAY("vr_show_pointer_ray", Settings.SECTION_VR, true);
+    VR_SHOW_POINTER_RAY("vr_show_pointer_ray", Settings.SECTION_VR, true),
+    VR_SHOW_CONTROLLER_DIAGRAM("vr_show_controller_diagram", Settings.SECTION_VR, true);
 
     override var boolean: Boolean = defaultValue
 

@@ -10,6 +10,7 @@ jclass gVrKeyboardLayerClass     = nullptr;
 jclass gVrErrorMessageLayerClass = nullptr;
 jclass gVrRibbonLayerClass       = nullptr;
 jclass gVrGameListLayerClass     = nullptr;
+jclass gVrControllerDiagramLayerClass = nullptr;
 } // namespace JniGlobalRef
 } // namespace VR
 
@@ -37,6 +38,11 @@ void VR::JNI::InitJNI(JNIEnv* jni) {
     if (VR::JniGlobalRef::gVrGameListLayerClass == nullptr) {
         FAIL("Could not find VrGameListLayer class");
     }
+    VR::JniGlobalRef::gVrControllerDiagramLayerClass = static_cast<jclass>(jni->NewGlobalRef(
+        jni->FindClass("org/citra/citra_emu/vr/ui/VrControllerDiagramLayer")));
+    if (VR::JniGlobalRef::gVrControllerDiagramLayerClass == nullptr) {
+        FAIL("Could not find VrControllerDiagramLayer class");
+    }
 }
 
 void VR::JNI::CleanupJNI(JNIEnv* jni) {
@@ -45,4 +51,5 @@ void VR::JNI::CleanupJNI(JNIEnv* jni) {
     VR::JniGlobalRef::gVrErrorMessageLayerClass = nullptr;
     VR::JniGlobalRef::gVrRibbonLayerClass       = nullptr;
     VR::JniGlobalRef::gVrGameListLayerClass     = nullptr;
+    VR::JniGlobalRef::gVrControllerDiagramLayerClass = nullptr;
 }

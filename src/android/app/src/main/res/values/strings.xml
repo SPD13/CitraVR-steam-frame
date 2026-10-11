@@ -966,6 +966,9 @@
     <string name="vr_action_menu_bar">[VR] Show/hide menu bar</string>
     <string name="vr_show_controllers">Show controllers</string>
     <string name="vr_show_controllers_description">Draws your controllers in VR, using SteamVR\'s models of them where available.</string>
+    <string name="vr_show_controller_diagram">Show controller diagram</string>
+    <string name="vr_show_controller_diagram_description">Shows the controllers, labelled with the current mapping, to the left of the game: turn your head to check which button does what.</string>
+    <string name="vr_controller_diagram_title">Controller mapping</string>
     <string name="vr_show_pointer_ray">Show pointer ray</string>
     <string name="vr_show_pointer_ray_description">Draws a ray from the pointing controller to the cursor, to see where you point.</string>
     <string name="vr_setup_title">Welcome to CitraVR</string>

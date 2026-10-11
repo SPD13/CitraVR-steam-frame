@@ -554,6 +554,10 @@ vr_show_controllers =
 # true (default): On, false: Off
 vr_show_pointer_ray =
 
+# Shows the controllers, labelled with the current mapping, to the left of the game.
+# true (default): On, false: Off
+vr_show_controller_diagram =
+
 # Controller mapping: the 3DS button of each control, as an Android key code.
 # 0: None, 96: A, 97: B, 99: X, 100: Y, 102: L, 103: R, 104: ZL, 105: ZR,
 # 108: Start, 109: Select, 110: Home, 19: D-pad up, 20: D-pad down, 21: D-pad left,

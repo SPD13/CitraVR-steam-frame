@@ -2310,6 +2310,15 @@ class SettingsFragmentPresenter(
             )
             add(
                 SwitchSetting(
+                    BooleanSetting.VR_SHOW_CONTROLLER_DIAGRAM,
+                    R.string.vr_show_controller_diagram,
+                    R.string.vr_show_controller_diagram_description,
+                    BooleanSetting.VR_SHOW_CONTROLLER_DIAGRAM.key,
+                    BooleanSetting.VR_SHOW_CONTROLLER_DIAGRAM.defaultValue
+                )
+            )
+            add(
+                SwitchSetting(
                     BooleanSetting.VR_SHOW_POINTER_RAY,
                     R.string.vr_show_pointer_ray,
                     R.string.vr_show_pointer_ray_description,
