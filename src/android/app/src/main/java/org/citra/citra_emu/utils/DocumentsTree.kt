@@ -167,7 +167,8 @@ class DocumentsTree {
             val destinationParent =
                 FileUtil.directoryDocument(context, destinationNode.uri!!) ?: return false
             val filename = URLDecoder.decode(destinationFilename, "UTF-8")
-            val destination = destinationParent.createFile(
+            val destination = FileUtil.createDocumentFile(
+                destinationParent,
                 "application/octet-stream",
                 filename
             ) ?: return false

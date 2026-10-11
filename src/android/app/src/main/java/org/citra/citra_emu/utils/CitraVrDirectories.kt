@@ -98,5 +98,28 @@ object CitraVrDirectories {
         if (changed) {
             editor.commit()
         }
+        recoverStrandedConfigFiles(preferences.getString(PermissionsHandler.CITRA_DIRECTORY, ""))
+    }
+
+    /**
+     * Earlier builds created config files in plain-path directories with a ".bin"
+     * suffix (e.g. per_game.ini.vr.bin; see FileUtil.createDocumentFile()), which
+     * neither the app nor the emulator read. Gives them back their real names.
+     */
+    private fun recoverStrandedConfigFiles(userDirectory: String?) {
+        val uri = Uri.parse(userDirectory ?: return)
+        if (!FileUtil.isFileUri(uri)) {
+            return
+        }
+        val configDirectory = File(uri.path ?: return, "config")
+        configDirectory.listFiles()?.forEach { file ->
+            val name = file.name.removeSuffix(".bin")
+            if (name != file.name && name.endsWith(".ini.vr") &&
+                !File(configDirectory, name).exists()
+            ) {
+                file.renameTo(File(configDirectory, name))
+                android.util.Log.i("CitraVrDirectories", "Renamed ${file.name} to $name")
+            }
+        }
     }
 }

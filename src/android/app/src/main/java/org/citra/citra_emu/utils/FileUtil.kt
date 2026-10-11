@@ -55,6 +55,24 @@ object FileUtil {
         }
 
     /**
+     * Creates a file named exactly `name` in `parent`. DocumentFile.createFile()
+     * on a plain-path directory appends an extension for the MIME type (".bin"
+     * for application/octet-stream), which document trees don't do.
+     */
+    fun createDocumentFile(parent: DocumentFile, mimeType: String, name: String): DocumentFile? {
+        if (!isFileUri(parent.uri)) {
+            return parent.createFile(mimeType, name)
+        }
+        val file = File(parent.uri.path ?: return null, name)
+        return try {
+            if (file.exists() || file.createNewFile()) DocumentFile.fromFile(file) else null
+        } catch (e: IOException) {
+            Log.error("[FileUtil]: Cannot create file ${file.path}: ${e.message}")
+            null
+        }
+    }
+
+    /**
      * Create a file from directory with filename.
      *
      * @param directory parent path for file.
@@ -81,7 +99,7 @@ object FileUtil {
             }
 
             val exists = parent.findFile(decodedFilename)
-            return exists ?: parent.createFile(mimeType, decodedFilename)
+            return exists ?: createDocumentFile(parent, mimeType, decodedFilename)
         } catch (e: Exception) {
             Log.error("[FileUtil]: Cannot create file, error: " + e.message)
             return null
@@ -329,7 +347,7 @@ object FileUtil {
             var destination = destinationParent.findFile(filename)
             if (destination == null) {
                 destination =
-                    destinationParent.createFile("application/octet-stream", filename)
+                    createDocumentFile(destinationParent, "application/octet-stream", filename)
             }
             if (destination == null) {
                 return false
@@ -429,7 +447,7 @@ object FileUtil {
                     } else {
                         var target = toDir.findFile(filename)
                         if (target == null || !target.exists()) {
-                            target = toDir.createFile(document.mimeType, document.filename)
+                            target = createDocumentFile(toDir, document.mimeType, document.filename)
                         }
                         if (target == null) {
                             continue
@@ -567,7 +585,7 @@ object FileUtil {
 
     fun copyToExternalStorage(sourceFile: Uri, destinationDir: DocumentFile): DocumentFile? {
         val filename = getFilename(sourceFile)
-        val destinationFile = destinationDir.createFile("application/zip", filename)!!
+        val destinationFile = createDocumentFile(destinationDir, "application/zip", filename)!!
         destinationFile.outputStream().use { os ->
             sourceFile.inputStream().use { it.copyTo(os) }
         }
