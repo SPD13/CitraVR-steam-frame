@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The menu bar's Controls tab: a help page with the controller mapping (the
+     labels are added by VrRibbonLayer, from the current mapping) and the 3DS
+     button layout, one at a time. The controller drawing keeps its aspect ratio
+     (1600 x 816), as does the 3DS layout (1400 x 760). No android:checked here:
+     native code inflates this layout on a thread without a Looper, where the
+     checked state's animator throws; VrRibbonLayer checks the first page. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/controls_panel"
+    android:layout_width="1080dp"
+    android:layout_height="693dp"
+    android:gravity="center_horizontal"
+    android:orientation="vertical">
+
+    <RadioGroup
+        android:id="@+id/controls_tabs"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:layout_marginBottom="20dp"
+        android:orientation="horizontal">
+
+        <RadioButton
+            android:id="@+id/button_controls_controller"
+            style="@style/VrRibbonButtonStyle"
+            android:layout_width="300dp"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="20dp"
+            android:background="@drawable/vr_ribbon_button_pressed"
+            android:button="@null"
+            android:text="@string/vr_controls_tab_controllers" />
+
+        <RadioButton
+            android:id="@+id/button_controls_3ds"
+            style="@style/VrRibbonButtonStyle"
+            android:layout_width="300dp"
+            android:layout_height="wrap_content"
+            android:background="@drawable/vr_ribbon_button_default"
+            android:button="@null"
+            android:text="@string/vr_controls_tab_3ds" />
+    </RadioGroup>
+
+    <FrameLayout
+        android:id="@+id/controls_controller_page"
+        android:layout_width="1050dp"
+        android:layout_height="536dp"
+        android:background="@android:color/black">
+
+        <ImageView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="@null"
+            android:scaleType="fitXY"
+            android:src="@drawable/vr_controller_diagram" />
+
+        <FrameLayout
+            android:id="@+id/controls_controller_labels"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+    </FrameLayout>
+
+    <LinearLayout
+        android:id="@+id/controls_3ds_page"
+        android:layout_width="1050dp"
+        android:layout_height="wrap_content"
+        android:background="@android:color/black"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:gravity="center_horizontal"
+            android:text="@string/vr_3ds_layout_title"
+            android:textColor="@android:color/white"
+            android:textSize="24sp"
+            android:textStyle="bold" />
+
+        <ImageView
+            android:layout_width="match_parent"
+            android:layout_height="536dp"
+            android:layout_marginStart="26dp"
+            android:layout_marginEnd="26dp"
+            android:contentDescription="@null"
+            android:scaleType="fitCenter"
+            android:src="@drawable/vr_3ds_layout" />
+    </LinearLayout>
+</LinearLayout>

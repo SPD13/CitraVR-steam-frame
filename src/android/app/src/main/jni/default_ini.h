@@ -539,7 +539,7 @@ static const char* android_config_default_file_content = (BOOST_HANA_STRING(R"(
 
 [VR]
 # Background to display behind 3DS windows
-# 1: Passthrough (default on Quest 3), 2: Void (black)
+# 1: Passthrough (default on Quest 3 and Steam Frame), 2: Void (black)
 vr_environment =
 
 # Overrides other settings to reduce overhead and maximize game performance.

@@ -33,13 +33,13 @@
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintTop_toTopOf="parent">
+            <!-- Pinned to the left edge, not centered against panelHolder, so the
+                 tab buttons stay put when switching tabs. -->
             <LinearLayout
                 android:layout_width="100dp"
-                android:layout_height="500dp"
+                android:layout_height="600dp"
                 android:orientation="vertical"
-                android:layout_marginEnd="30dp"
                 app:layout_constraintBottom_toBottomOf="@+id/frame"
-                app:layout_constraintEnd_toStartOf="@+id/panelHolder"
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toTopOf="parent">
 
@@ -91,6 +91,17 @@
                         />
 
                     <RadioButton
+                        android:id="@+id/button_menu_controls"
+                        style="@style/VrRibbonButtonStyle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:button="@null"
+                        android:clipToOutline="true"
+                        android:text="@string/vr_controls_tab"
+                        android:layout_marginBottom="15dp"
+                        />
+
+                    <RadioButton
                         android:id="@+id/button_menu_settings"
                         style="@style/VrRibbonButtonStyle"
                         android:layout_width="match_parent"
@@ -100,15 +111,19 @@
                         android:text="Settings"
                         android:layout_marginBottom="20dp"
                         />
+
                 </RadioGroup>
             </LinearLayout>
 
+            <!-- The size of the largest tab (Main: 900dp lower-screen placeholder,
+                 50dp gap, 130dp buttons; 675dp + 18dp tall), so it doesn't change
+                 when switching tabs. -->
             <androidx.constraintlayout.widget.ConstraintLayout
                 android:id="@+id/panelHolder"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:minWidth="1050dp"
-                android:minHeight="685dp"
+                android:minWidth="1080dp"
+                android:minHeight="693dp"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintTop_toTopOf="parent">
@@ -125,6 +140,10 @@
 
                 <include
                     layout="@layout/vr_ribbon_settings_panel"
+                    android:visibility="gone" />
+
+                <include
+                    layout="@layout/vr_ribbon_controls_panel"
                     android:visibility="gone" />
 
             </androidx.constraintlayout.widget.ConstraintLayout>

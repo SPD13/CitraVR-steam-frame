@@ -43,7 +43,7 @@ Passthrough and the immersive modes haven't been checked on the headset yet. The
 **Running on Steam Frame (SteamVR through Lepton)**
 - **OpenXR extensions:** only `XR_KHR_opengl_es_enable` is required. Every Meta/FB extension is used when the runtime offers it and skipped or replaced when it doesn't. That covers cylinder layers, image-layout flip, layer settings, passthrough, performance settings and metrics, and thread settings. `XR_KHR_android_create_instance` is passed when offered.
 - **Screens without surface-backed swapchains:** SteamVR doesn't offer `XR_KHR_android_surface_swapchain`. The game screens and all VR panels (menu bar, keyboard, error dialog) are instead drawn by Android into a `SurfaceTexture`, and each new frame is copied into a regular OpenXR swapchain (`vr/SurfaceSwapchain.cpp`). New frames are detected with a frame listener. Quest keeps its surface-backed swapchains.
-- **Passthrough:** without `XR_FB_passthrough`, the app uses the alpha-blend environment mode, with a transparent projection layer behind the panels.
+- **Passthrough:** without `XR_FB_passthrough`, the app uses the alpha-blend environment mode, with a transparent projection layer behind the panels. On Steam Frame, passthrough is the default background, as on Quest 3. A **Passthrough: On/Off** button in the menu bar (Main tab) switches between the room and the void in game, and keeps the choice as the VR background setting. While the room shows, the controller diagram and 3DS layout panels are hidden.
 - **Steam Frame controllers:** native bindings through `XR_VALVE_frame_controller_interaction`. The face buttons are on the right controller (in the Nintendo layout by default), the 3DS d-pad on the left d-pad, L/R on the bumpers, and the right **Menu** button toggles the menu bar; the buttons can be remapped (see [Controller mapping](#what-this-fork-adds)). Action queries also follow the OpenXR spec strictly, which SteamVR requires and Quest didn't.
 - **Headset detection:** Lepton (model `Lepton`) is recognised as Steam Frame, with the Quest 3 default resolution (3×).
 - **Menu bar fix:** upstream's secondary-display feature drew the lower game screen over CitraVR's own VR panel displays, which hid the menu bar and its *Close Game* button. Those displays are now excluded.
@@ -53,7 +53,7 @@ Passthrough and the immersive modes haven't been checked on the headset yet. The
 **Controllers and pointer ray**
 - **Controllers:** your controllers are drawn in VR, using SteamVR's own render models of the Steam Frame controllers, read from the headset's SteamVR install and placed with the models' `openxr_aim` reference, as SteamVR places them.
 - **Pointer ray:** a ray runs from the pointing controller to the cursor, so you can see where you point. When it points at nothing, a short ray fades out.
-- **Reliable clicks:** a press counts where you aimed just before pulling the trigger (the pull tilts the controller), and small hand movements while the trigger is held don't turn a click into a drag. Moving further still drags, e.g. to scroll a list.
+- **Reliable clicks:** pulling the trigger on a button clicks it right away, where you aimed just before the pull (the pull tilts the controller); what the hand does until the release doesn't matter. The menus don't drag: lists scroll with the thumbstick. Select and Start in the menu bar stay pressed while the trigger is held.
 - **Settings:** **Show controllers** and **Show pointer ray** in the VR settings turn each on or off (both on by default; they apply from the next game start).
 - **How:** SteamVR on Steam Frame draws quad layers over projection layers whatever their order, so both are quad layers, which it sorts by depth among the panels. The ray is a thin quad along the ray, turned towards the head. Each controller is drawn, per eye, into a quad at the controller that faces that eye and is shown to it only, rendered from that eye's position so the stereo pair is exact. Where no model is found (e.g. on Quest), only the ray is drawn.
 
@@ -71,7 +71,8 @@ Passthrough and the immersive modes haven't been checked on the headset yet. The
 - **Where:** a panel 90° to the left of the game shows the Steam Frame controllers: turn your head to check which button does what, without leaving the game.
 - **Live labels:** the labels come from the mapping in use, per-game mapping included, and change as soon as you remap a button, also from the in-game settings.
 - **3DS layout:** a panel 90° to the right shows the 3DS-style button layout, to compare.
-- **Setting:** **Show controller diagram** in the VR settings (on by default) hides both panels, right away.
+- **Setting:** **Show controller diagram** in the VR settings (on by default) hides both panels, right away. They're also hidden while passthrough shows the room.
+- **Controls tab:** the menu bar's **Controls** tab is a help page with the same two drawings, one at a time (**VR controllers** / **3DS buttons**), labelled with the mapping in use. It works whatever the setting and with passthrough on.
 
 **One-question setup and folders that survive updates**
 - **First launch:** when CitraVR has all-files access (always on Steam Frame), first launch asks a single question: *Do you want to manually configure Citra directories?* Answering **No** creates `/storage/emulated/0/CitraVR` (data) and `/storage/emulated/0/CitraVR/games` (games) and goes straight to the game list.
@@ -142,7 +143,7 @@ In VR, turn your head to the left: a panel shows the controllers labelled with t
 One controller is the pointer: it shows a ray and a dot where it points. The triggers do two jobs, depending on where their controller points **when the trigger is pulled** (the choice holds until it's released):
 
 - **On the bottom screen:** the trigger touches the 3DS touchscreen where the dot is. Holding it and moving is a stylus drag.
-- **On a menu** (the menu bar beside the bottom screen, the game list, the keyboard, a message): the trigger clicks. A click counts where you aimed just before pulling (the pull tilts the controller), and small movements while it's held don't cancel it; moving further drags, e.g. to scroll a list.
+- **On a menu** (the menu bar beside the bottom screen, the game list, the keyboard, a message): the trigger clicks. It clicks as soon as it's pulled, where you aimed just before the pull (the pull tilts the controller). Lists scroll with the thumbstick, not by dragging.
 - **Anywhere else** (the top screen, the room): the trigger is a game button, ZL on the left and ZR on the right by default. It doesn't click.
 
 Pulling the *other* controller's trigger while it points at the bottom screen or a menu makes that controller the pointer; pulled anywhere else, it doesn't take over the pointer.

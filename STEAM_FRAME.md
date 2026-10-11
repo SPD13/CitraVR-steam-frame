@@ -11,9 +11,10 @@ Steam Frame runs Android apps through **Lepton**, Valve's Android container, wit
 | 10 required OpenXR extensions | Only `XR_KHR_opengl_es_enable` is required. Every other extension is enabled only if the runtime offers it, and the features that need it are skipped or replaced. |
 | `XR_KHR_android_surface_swapchain` (game screen, settings ribbon, keyboard and error panels; confirmed missing on SteamVR 2.18.2) | Android draws into a `SurfaceTexture`, and each new frame is copied into an ordinary GLES swapchain (`vr/SurfaceSwapchain.cpp`). Quest keeps the surface-backed swapchains. |
 | `XR_FB_composition_layer_image_layout` (vertical flip) | Not needed: the copy is already upright. |
-| `XR_FB_passthrough` | If passthrough is selected and the runtime offers `XR_ENVIRONMENT_BLEND_MODE_ALPHA_BLEND`, frames are alpha-blended over the real world with a transparent projection layer at the back. SteamVR only shows passthrough behind a projection layer. Otherwise the void is used. |
+| `XR_FB_passthrough` | If passthrough is selected and the runtime offers `XR_ENVIRONMENT_BLEND_MODE_ALPHA_BLEND`, frames are alpha-blended over the real world with a transparent projection layer at the back. SteamVR only shows passthrough behind a projection layer. Otherwise the void is used. Passthrough is the default background on Steam Frame. The menu bar's **Passthrough** button switches it on and off in game (and saves it as the background setting). |
 | `XR_KHR_composition_layer_cylinder` (curved screen, immersive modes) | Falls back to the flat screen. |
-| `XR_EXT_performance_settings`, `XR_KHR_android_thread_settings`, `XR_META_performance_metrics` | Skipped. The ribbon's performance stats are empty. |
+| `XR_EXT_performance_settings`, `XR_KHR_android_thread_settings` | Skipped. |
+| `XR_META_performance_metrics` | Used where offered. Each counter is read as a float or an integer as the runtime flags it, and shown as "--" when it isn't provided. Where the runtime reports no CPU or GPU usage, the Stats tab measures it: the device's CPU usage from `/proc/stat`, and CitraVR's own GPU usage from the DRM driver's per-client busy time (`/proc/self/fdinfo`), labelled **GPU Usage (CitraVR)**. |
 | Touch controller bindings | Kept. With `XR_VALVE_frame_controller_interaction`, Steam Frame controllers also get their own bindings (below). |
 | HMD detection | Lepton reports model `Lepton`. It gets the Quest 3 default resolution factor (3x). |
 
@@ -36,7 +37,7 @@ On Steam Frame controllers (if SteamVR accepts the Frame controller profile), by
 | Right Menu button | Show/hide the menu bar |
 | Triggers | Pointer click (on a panel); ZL, ZR elsewhere |
 
-In VR, a panel 90° to the left shows the controllers labelled with the current mapping, and one 90° to the right the 3DS-style button layout (VR setting **Show controller diagram**, on by default, for both).
+In VR, a panel 90° to the left shows the controllers labelled with the current mapping, and one 90° to the right the 3DS-style button layout (VR setting **Show controller diagram**, on by default, for both). The menu bar's **Controls** tab shows the same two drawings as a help page.
 
 The buttons can be remapped in **Settings → VR → Controller mapping** (also in game, from the menu bar's **Settings** tab, globally or per game): tap a 3DS button, then press the controller button to use for it. Each 3DS button gets one controller button, A/B/X/Y, the d-pad, bumpers, grips, thumbstick clicks or triggers. The View and Menu buttons are mappable too, and showing/hiding the menu bar has its own row (on Menu by default; with no button for it, the menu bar stays shown). A trigger still clicks when its controller points at a panel (and that controller becomes the pointer); it presses its 3DS button only when pulled while pointing elsewhere. The sticks keep their roles.
 
@@ -147,13 +148,13 @@ Report each of these, with the logcat for any that fail:
 3. The colours look the same as on a phone, not washed out or too dark. (This checks the sRGB handling of the copy.)
 4. The lower touch screen, settings ribbon, keyboard, and error panel appear, are upright, and respond to the pointer.
 5. Controller bindings: logcat shows `Using Steam Frame controller bindings`, and the table above matches.
-6. Passthrough (Settings → VR → environment): the real room is visible behind the screens.
+6. Passthrough (on by default; the menu bar's **Passthrough** button, or Settings → VR → environment): the real room is visible behind the screens, and the side panels are hidden. The menu bar's **Controls** tab still shows both drawings.
 7. Performance: full-speed games stay at full speed. The extra copy costs a few hundred microseconds of GPU time per frame.
 
 ## Known limitations
 
 - Curved screen and immersive modes fall back to the flat screen (no cylinder layers in SteamVR).
-- No CPU/GPU clock control and no performance stats overlay.
+- No CPU/GPU clock control. GPU usage in the Stats tab is CitraVR's only: the SteamVR compositor runs outside Lepton's container.
 - SteamVR allows 16 swapchains per session. CitraVR uses 6 (7 with passthrough).
 
 ## Release key

@@ -15,13 +15,15 @@ import android.view.MotionEvent.PointerCoords
 import android.view.MotionEvent.PointerProperties
 import android.view.Surface
 import android.view.View
+import android.view.ViewGroup
 import android.view.Window
 import android.view.WindowManager
 import org.citra.citra_emu.utils.Log
 import org.citra.citra_emu.vr.VrActivity
 import java.io.File
 import java.io.FileOutputStream
-import kotlin.math.hypot
+import java.util.Collections
+import java.util.WeakHashMap
 import kotlin.math.roundToInt
 
 /*
@@ -83,19 +85,22 @@ abstract class VrUILayer(
     }
 
     // The gesture in progress: where and when the trigger went down, and whether
-    // the pointer has since moved far enough to be a drag rather than a click.
+    // its click was already made on the pull.
     private var gestureDownTime = 0L
     private var gestureDownX = 0f
     private var gestureDownY = 0f
-    private var isDragging = false
+    private var isClickDone = false
 
     /**
      * Turns the controller's trigger into touch events. A pointer held at arm's
-     * length shakes by more than Android's touch slop while the trigger is
-     * pulled, which made scrollable views take clicks for drags and cancel them.
-     * Until the pointer leaves [CLICK_SLOP_PX] of where the trigger went down,
-     * it is reported there, so the release lands as a click; beyond it, the
-     * gesture becomes a drag (e.g. to scroll a list) and follows the pointer.
+     * length shakes while the trigger is pulled and released, which made clicks
+     * on release unreliable. So:
+     * - Pulling the trigger on a button (any clickable view) clicks it right
+     *   away: a press and release there. The rest of the pull is ignored.
+     * - Elsewhere (the panel's background, or views registered with
+     *   [holdWhilePressed]) the press lasts as long as the trigger is held, and
+     *   stays where it began.
+     * There is no dragging: lists scroll with the thumbstick instead.
      */
     private fun dispatchPointerEvent(x: Float, y: Float, action: Int) {
         when (action) {
@@ -103,25 +108,48 @@ abstract class VrUILayer(
                 gestureDownTime = SystemClock.uptimeMillis()
                 gestureDownX = x
                 gestureDownY = y
-                isDragging = false
-                dispatchTouchEvent(x, y, action)
+                val target = getTouchTargetWindow()?.decorView?.let { findClickableView(it, x, y) }
+                isClickDone = target != null && target !in pressAndHoldViews
+                dispatchTouchEvent(x, y, MotionEvent.ACTION_DOWN)
+                if (isClickDone) {
+                    dispatchTouchEvent(x, y, MotionEvent.ACTION_UP)
+                }
             }
 
-            MotionEvent.ACTION_MOVE, MotionEvent.ACTION_UP -> {
-                if (!isDragging &&
-                    hypot(x - gestureDownX, y - gestureDownY) > CLICK_SLOP_PX
-                ) {
-                    isDragging = true
-                }
-                if (isDragging) {
-                    dispatchTouchEvent(x, y, action)
-                } else {
+            MotionEvent.ACTION_MOVE, MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (!isClickDone && gestureDownTime != 0L) {
                     dispatchTouchEvent(gestureDownX, gestureDownY, action)
+                }
+                if (action != MotionEvent.ACTION_MOVE) {
+                    gestureDownTime = 0L
+                    isClickDone = false
                 }
             }
 
             else -> dispatchTouchEvent(x, y, action)
         }
+    }
+
+    /**
+     * The topmost clickable view at display coordinates ([x], [y]) in [view]'s
+     * tree, the deepest one where they are nested (a button over a clickable
+     * background), or null.
+     */
+    private fun findClickableView(view: View, x: Float, y: Float): View? {
+        if (view.visibility != View.VISIBLE) return null
+        val location = IntArray(2)
+        view.getLocationOnScreen(location)
+        if (x < location[0] || y < location[1] ||
+            x >= location[0] + view.width || y >= location[1] + view.height
+        ) {
+            return null
+        }
+        if (view is ViewGroup) {
+            for (i in view.childCount - 1 downTo 0) {
+                findClickableView(view.getChildAt(i), x, y)?.let { return it }
+            }
+        }
+        return if (view.isClickable) view else null
     }
 
     fun sendScrollToUI(x: Float, y: Float, scrollX: Float, scrollY: Float): Int {
@@ -301,11 +329,20 @@ abstract class VrUILayer(
         // AKA "baseline density"
         private const val DEFAULT_DENSITY = DisplayMetrics.DENSITY_MEDIUM.toFloat()
 
-        // How far (in panel pixels) the pointer may wander while the trigger is held
-        // and still make a click: pulling and releasing the trigger tilts the
-        // controller too. Panels are shown at 1200 px per meter, so this is about
-        // 8 cm, or 3 degrees of hand movement at a panel 1.6 m away.
-        private const val CLICK_SLOP_PX = 100f
+        // Views that are pressed for as long as the trigger is held, rather than
+        // clicked when it's pulled (see dispatchPointerEvent).
+        private val pressAndHoldViews: MutableSet<View> =
+            Collections.newSetFromMap(WeakHashMap())
+
+        /**
+         * Makes [view] pressed for as long as the trigger is held instead of
+         * clicked when it's pulled: for views that act on the press and the
+         * release, like the 3DS Start and Select buttons.
+         */
+        fun holdWhilePressed(view: View) {
+            pressAndHoldViews += view
+        }
+
         private external fun nativeSetBounds(
             handle: Long, leftInDp: Int, topInDp: Int,
             rightInDp: Int, bottomInDp: Int

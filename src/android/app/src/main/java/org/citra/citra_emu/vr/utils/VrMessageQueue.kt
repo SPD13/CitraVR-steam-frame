@@ -10,7 +10,8 @@ object VrMessageQueue {
                 CHANGE_LOCK_HORIZONTAL_AXIS(4),
                 RESET_PANEL_POSITIONS(5),
                 SHOW_GAME_LIST(6),
-                CAPTURE_CONTROL(7)
+                CAPTURE_CONTROL(7),
+                SET_PASSTHROUGH(8)
             }
         @JvmStatic
         fun post(messageType: MessageType, payload: Long) {

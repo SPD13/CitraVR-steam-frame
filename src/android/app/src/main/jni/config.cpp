@@ -483,7 +483,8 @@ void Config::ReadValues() {
     VRSettings::values.vr_environment = Settings::values.vr_extra_performance_mode_enabled.GetValue() ?
       static_cast<long>(VRSettings::VREnvironmentType::VOID) : android_config->GetInteger(
           "VR", "vr_environment",
-          static_cast<long>(VRSettings::values.hmd_type == VRSettings::HMDType::QUEST3 ?
+          static_cast<long>(VRSettings::values.hmd_type == VRSettings::HMDType::QUEST3 ||
+                            VRSettings::values.hmd_type == VRSettings::HMDType::STEAMFRAME ?
             VRSettings::VREnvironmentType::PASSTHROUGH : VRSettings::VREnvironmentType::VOID));
     // CitraVR: default to the highest CPU clock level. Emulation is nearly
     // always CPU-bound, and the GPU level is already pinned to boost.

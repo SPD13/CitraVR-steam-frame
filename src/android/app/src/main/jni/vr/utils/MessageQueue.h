@@ -19,7 +19,8 @@ enum LowerMenuType : uint16_t {
     MAIN_MENU       = 0,
     POSITIONAL_MENU = 1,
     STATS_MENU      = 2,
-    SETTINGS_MENU   = 3
+    SETTINGS_MENU   = 3,
+    CONTROLS_MENU   = 4 // help page with the controller mapping and 3DS layout
 };
 
 /**
@@ -41,6 +42,7 @@ struct Message {
         RESET_PANEL_POSITIONS       = 5, // payload ignored
         SHOW_GAME_LIST              = 6, // payload 0 = hide game list, 1 = show game list
         CAPTURE_CONTROL             = 7, // payload 1 = report the next control pressed, 0 = stop
+        SET_PASSTHROUGH             = 8, // payload 1 = show the room around the game, 0 = void
     };
 
     Message() {}

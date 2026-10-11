@@ -35,7 +35,10 @@ License     :   Licensed under GPLv3 or any later version.
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <limits>
 #include <map>
+#include <set>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -370,23 +373,15 @@ private:
         // Create the layers
         //////////////////////////////////////////////////
 
-        // Create the background layer.
+        // The background: passthrough or the void, from the settings at first, then
+        // from the menu bar's Passthrough button (see UpdatePassthrough()).
         assert(VRSettings::values.vr_environment ==
                    static_cast<int32_t>(VRSettings::VREnvironmentType::VOID) ||
                VRSettings::values.vr_environment ==
                    static_cast<int32_t>(VRSettings::VREnvironmentType::PASSTHROUGH));
-        // If user set "Void" in settings, don't render passthrough
-        if (VRSettings::values.vr_environment !=
-            static_cast<int32_t>(VRSettings::VREnvironmentType::VOID)) {
-            if (OpenXr::GetExtensions().mPassthroughFB) {
-                mPassthroughLayer = std::make_unique<PassthroughLayer>(gOpenXr->mSession);
-            } else if (gOpenXr->mAlphaBlendSupported) {
-                mAlphaBlendPassthroughLayer =
-                    std::make_unique<AlphaBlendPassthroughLayer>(gOpenXr->mSession);
-            } else {
-                ALOGW("Passthrough is not supported by this runtime; using the void");
-            }
-        }
+        mLastAppState.mIsPassthroughOn =
+            VRSettings::values.vr_environment ==
+            static_cast<int32_t>(VRSettings::VREnvironmentType::PASSTHROUGH);
 
         // Create the game surface layer.
         {
@@ -487,6 +482,34 @@ private:
         }
     }
 
+    // Creates or removes the passthrough layer to match the requested state, and
+    // tells the menu bar (its Passthrough button) when the state changes.
+    void UpdatePassthrough(const bool isRequested) {
+        const bool isSupported =
+            OpenXr::GetExtensions().mPassthroughFB || gOpenXr->mAlphaBlendSupported;
+        const bool shouldBeOn = isRequested && isSupported;
+        const bool isOn = mPassthroughLayer != nullptr || mAlphaBlendPassthroughLayer != nullptr;
+        if (shouldBeOn && !isOn) {
+            if (OpenXr::GetExtensions().mPassthroughFB) {
+                mPassthroughLayer = std::make_unique<PassthroughLayer>(gOpenXr->mSession);
+            } else {
+                mAlphaBlendPassthroughLayer =
+                    std::make_unique<AlphaBlendPassthroughLayer>(gOpenXr->mSession);
+            }
+        } else if (!shouldBeOn && isOn) {
+            mPassthroughLayer.reset();
+            mAlphaBlendPassthroughLayer.reset();
+        }
+        if (!mHasReportedPassthrough || shouldBeOn != mReportedPassthroughState) {
+            if (isRequested && !isSupported) {
+                ALOGW("Passthrough is not supported by this runtime; using the void");
+            }
+            mRibbonLayer->SetPassthroughState(shouldBeOn, isSupported);
+            mReportedPassthroughState = shouldBeOn;
+            mHasReportedPassthrough = true;
+        }
+    }
+
     void Frame(JNIEnv* jni, const AppState& appState) {
 
         const auto frameLoopStart = std::chrono::steady_clock::now();
@@ -571,6 +594,7 @@ private:
         mButtonLayoutLayer->UpdateSurface();
         mControllerDiagramLayer->UpdateMapping(VRSettings::values.vr_button_map);
 
+        UpdatePassthrough(appState.mIsPassthroughOn);
         uint32_t                        layerCount = 0;
         std::vector<XrCompositionLayer> layers(gOpenXr->mMaxLayerCount, XrCompositionLayer{});
         XrEnvironmentBlendMode environmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
@@ -604,7 +628,11 @@ private:
             }
 
             if (showUIRibbon) { mRibbonLayer->Frame(gOpenXr->mLocalSpace, layers, layerCount); }
-            if (VRSettings::values.vr_show_controller_diagram) {
+            // The controller diagram and the 3DS layout would stand in front of the
+            // room: they're hidden while passthrough shows it.
+            const bool isPassthroughShown =
+                mPassthroughLayer != nullptr || mAlphaBlendPassthroughLayer != nullptr;
+            if (VRSettings::values.vr_show_controller_diagram && !isPassthroughShown) {
                 if (layerCount < layers.size()) {
                     mControllerDiagramLayer->Frame(gOpenXr->mLocalSpace, layers, layerCount);
                 }
@@ -1298,6 +1326,7 @@ private:
                       : newState.mLowerMenuType == LowerMenuType::MAIN_MENU     ? "M"
                       : newState.mLowerMenuType == LowerMenuType::STATS_MENU    ? "S"
                       : newState.mLowerMenuType == LowerMenuType::SETTINGS_MENU ? "Set"
+                      : newState.mLowerMenuType == LowerMenuType::CONTROLS_MENU ? "C"
                                                                                 : "U");
                 if (shouldPauseEmulation) {
                     PauseEmulation(jni);
@@ -1541,6 +1570,14 @@ private:
                     newAppState.mShouldShowGameList = message.mPayload == 1;
                     break;
                 }
+                case Message::Type::SET_PASSTHROUGH: {
+                    ALOGI("Received SET_PASSTHROUGH message: {}", message.mPayload);
+                    newAppState.mIsPassthroughOn = message.mPayload == 1;
+                    VRSettings::values.vr_environment = static_cast<int32_t>(
+                        newAppState.mIsPassthroughOn ? VRSettings::VREnvironmentType::PASSTHROUGH
+                                                     : VRSettings::VREnvironmentType::VOID);
+                    break;
+                }
                 case Message::Type::CAPTURE_CONTROL: {
                     ALOGI("Received CAPTURE_CONTROL message: {}", message.mPayload);
                     newAppState.mIsCapturingControl = message.mPayload == 1;
@@ -1676,6 +1713,8 @@ private:
         bool mIsEmulationPaused      = false;
         // The settings are waiting for a controller button to map (see HandleInput()).
         bool mIsCapturingControl     = false;
+        // The room around the game (passthrough) rather than the void, if supported.
+        bool mIsPassthroughOn        = false;
 
         bool mIsStopRequested   = false;
         bool mIsXrSessionActive = false;
@@ -1699,6 +1738,9 @@ private:
     std::unique_ptr<GameSurfaceLayer> mGameSurfaceLayer;
     std::unique_ptr<PassthroughLayer> mPassthroughLayer;
     std::unique_ptr<AlphaBlendPassthroughLayer> mAlphaBlendPassthroughLayer;
+    // The passthrough state last reported to the menu bar (see UpdatePassthrough()).
+    bool mReportedPassthroughState = false;
+    bool mHasReportedPassthrough = false;
     std::unique_ptr<UILayer> mKeyboardLayer;
     std::unique_ptr<UILayer> mGameListLayer;
     std::unique_ptr<RibbonLayer> mRibbonLayer;
@@ -1832,80 +1874,73 @@ extern "C" JNIEXPORT void JNICALL Java_org_citra_citra_1emu_vr_utils_VrMessageQu
 extern "C" JNIEXPORT jfloatArray JNICALL
 Java_org_citra_citra_1emu_vr_ui_VrRibbonLayer_nativeGetStatsOXR(JNIEnv* env, jobject thiz) {
 
-    if (vr::gSession == XR_NULL_HANDLE || OpenXr::GetInstance() == XR_NULL_HANDLE ||
-        !OpenXr::GetExtensions().mPerformanceMetrics) {
+    if (vr::gSession == XR_NULL_HANDLE || OpenXr::GetInstance() == XR_NULL_HANDLE) {
         return nullptr;
     }
 
+    // The runtime's metrics, where it has XR_META_performance_metrics. Without
+    // it, they are all NaN and the stall telemetry is still returned.
     static PFN_xrQueryPerformanceMetricsCounterMETA xrQueryPerformanceMetricsCounterMETA = nullptr;
-    if (xrQueryPerformanceMetricsCounterMETA == nullptr) {
-        const XrResult result =
+    static bool sHasSetUpMetrics = false;
+    if (!sHasSetUpMetrics && OpenXr::GetExtensions().mPerformanceMetrics) {
+        sHasSetUpMetrics = true;
+        PFN_xrSetPerformanceMetricsStateMETA xrSetPerformanceMetricsStateMETA = nullptr;
+        xrGetInstanceProcAddr(OpenXr::GetInstance(), "xrSetPerformanceMetricsStateMETA",
+                              (PFN_xrVoidFunction*)&xrSetPerformanceMetricsStateMETA);
+        XrPerformanceMetricsStateMETA perfMetricsState{XR_TYPE_PERFORMANCE_METRICS_STATE_META};
+        perfMetricsState.enabled = XR_TRUE;
+        const XrResult stateResult =
+            xrSetPerformanceMetricsStateMETA == nullptr
+                ? XR_ERROR_FUNCTION_UNSUPPORTED
+                : xrSetPerformanceMetricsStateMETA(vr::gSession, &perfMetricsState);
+        const XrResult queryResult =
             xrGetInstanceProcAddr(OpenXr::GetInstance(), "xrQueryPerformanceMetricsCounterMETA",
                                   (PFN_xrVoidFunction*)&xrQueryPerformanceMetricsCounterMETA);
-        if (result != XR_SUCCESS) {
-            ALOGE("Failed to get xrQueryPerformanceMetrics function pointer: %d", result);
-            return nullptr;
-        }
-
-        if (xrQueryPerformanceMetricsCounterMETA != nullptr) {
-            // do initial query to check available
-            PFN_xrSetPerformanceMetricsStateMETA xrSetPerformanceMetricsStateMETA = nullptr;
-            xrGetInstanceProcAddr(OpenXr::GetInstance(), "xrSetPerformanceMetricsStateMETA",
-                                  (PFN_xrVoidFunction*)&xrSetPerformanceMetricsStateMETA);
-            if (xrSetPerformanceMetricsStateMETA != nullptr) {
-                XrPerformanceMetricsStateMETA perfMetricsState{
-                    XR_TYPE_PERFORMANCE_METRICS_STATE_META};
-                perfMetricsState.enabled = XR_TRUE;
-                if (xrSetPerformanceMetricsStateMETA(vr::gSession, &perfMetricsState) !=
-                    XR_SUCCESS) {
-                    ALOGE("xrSetPerformanceMetricsStateMETA failed");
-                    return nullptr;
-                }
-            }
+        ALOGI("Performance metrics: enabling {}, query function {}", static_cast<int>(stateResult),
+              static_cast<int>(queryResult));
+        if (stateResult != XR_SUCCESS || queryResult != XR_SUCCESS) {
+            xrQueryPerformanceMetricsCounterMETA = nullptr;
         }
     }
-    if (xrQueryPerformanceMetricsCounterMETA == nullptr) {
-        ALOGE("xrQueryPerformanceMetricsCounterMETA is not available");
-        return nullptr;
-    }
 
-    XrPath cpuUtilizationPath, gpuUtilizationPath, appCpuFrameTimePath, appGpuFrameTimePath,
-        appVrLatencyPath, compTearPath, compCpuFrameTimePath, compGpuFrameTimePath;
-
-    XrPerformanceMetricsCounterMETA cpuUtilization   = {XR_TYPE_PERFORMANCE_METRICS_COUNTER_META};
-    XrPerformanceMetricsCounterMETA gpuUtilization   = {XR_TYPE_PERFORMANCE_METRICS_COUNTER_META};
-    XrPerformanceMetricsCounterMETA appCpuFrameTime  = {XR_TYPE_PERFORMANCE_METRICS_COUNTER_META};
-    XrPerformanceMetricsCounterMETA appGpuFrameTime  = {XR_TYPE_PERFORMANCE_METRICS_COUNTER_META};
-    XrPerformanceMetricsCounterMETA appVrLatency     = {XR_TYPE_PERFORMANCE_METRICS_COUNTER_META};
-    XrPerformanceMetricsCounterMETA compTears        = {XR_TYPE_PERFORMANCE_METRICS_COUNTER_META};
-    XrPerformanceMetricsCounterMETA compCpuFrameTime = {XR_TYPE_PERFORMANCE_METRICS_COUNTER_META};
-    XrPerformanceMetricsCounterMETA compGpuFrameTime = {XR_TYPE_PERFORMANCE_METRICS_COUNTER_META};
-
-    xrStringToPath(OpenXr::GetInstance(), "/perfmetrics_meta/device/cpu_utilization_average",
-                   &cpuUtilizationPath);
-    xrStringToPath(OpenXr::GetInstance(), "/perfmetrics_meta/device/gpu_utilization",
-                   &gpuUtilizationPath);
-    xrStringToPath(OpenXr::GetInstance(), "/perfmetrics_meta/app/cpu_frametime",
-                   &appCpuFrameTimePath);
-    xrStringToPath(OpenXr::GetInstance(), "/perfmetrics_meta/app/gpu_frametime",
-                   &appGpuFrameTimePath);
-    xrStringToPath(OpenXr::GetInstance(), "/perfmetrics_meta/app/motion_to_photon_latency",
-                   &appVrLatencyPath);
-    xrStringToPath(OpenXr::GetInstance(), "/perfmetrics_meta/compositor/dropped_frame_count",
-                   &compTearPath);
-    xrStringToPath(OpenXr::GetInstance(), "/perfmetrics_meta/compositor/cpu_frametime",
-                   &compCpuFrameTimePath);
-    xrStringToPath(OpenXr::GetInstance(), "/perfmetrics_meta/compositor/gpu_frametime",
-                   &compGpuFrameTimePath);
-
-    xrQueryPerformanceMetricsCounterMETA(vr::gSession, cpuUtilizationPath, &cpuUtilization);
-    xrQueryPerformanceMetricsCounterMETA(vr::gSession, gpuUtilizationPath, &gpuUtilization);
-    xrQueryPerformanceMetricsCounterMETA(vr::gSession, appCpuFrameTimePath, &appCpuFrameTime);
-    xrQueryPerformanceMetricsCounterMETA(vr::gSession, appGpuFrameTimePath, &appGpuFrameTime);
-    xrQueryPerformanceMetricsCounterMETA(vr::gSession, appVrLatencyPath, &appVrLatency);
-    xrQueryPerformanceMetricsCounterMETA(vr::gSession, compTearPath, &compTears);
-    xrQueryPerformanceMetricsCounterMETA(vr::gSession, compCpuFrameTimePath, &compCpuFrameTime);
-    xrQueryPerformanceMetricsCounterMETA(vr::gSession, compGpuFrameTimePath, &compGpuFrameTime);
+    // A counter's value, or NaN where the runtime doesn't provide it (the
+    // query fails or flags no valid value). Runtimes report a counter as a
+    // float or as an integer (counterFlags says which), so both are read.
+    // Each counter's outcome is logged once.
+    const auto query = [&](const char* pathString) -> float {
+        if (xrQueryPerformanceMetricsCounterMETA == nullptr) {
+            return std::numeric_limits<float>::quiet_NaN();
+        }
+        XrPath path = XR_NULL_PATH;
+        XrPerformanceMetricsCounterMETA counter = {XR_TYPE_PERFORMANCE_METRICS_COUNTER_META};
+        XrResult result = xrStringToPath(OpenXr::GetInstance(), pathString, &path);
+        if (result == XR_SUCCESS) {
+            result = xrQueryPerformanceMetricsCounterMETA(vr::gSession, path, &counter);
+        }
+        float value = std::numeric_limits<float>::quiet_NaN();
+        if (result == XR_SUCCESS &&
+            (counter.counterFlags & XR_PERFORMANCE_METRICS_COUNTER_FLOAT_VALUE_VALID_BIT_META)) {
+            value = counter.floatValue;
+        } else if (result == XR_SUCCESS &&
+                   (counter.counterFlags &
+                    XR_PERFORMANCE_METRICS_COUNTER_UINT_VALUE_VALID_BIT_META)) {
+            value = static_cast<float>(counter.uintValue);
+        }
+        static std::set<std::string> sLoggedPaths;
+        if (sLoggedPaths.insert(pathString).second) {
+            ALOGI("Performance metric {}: result {}, flags {:#x}, value {}", pathString,
+                  static_cast<int>(result), static_cast<uint64_t>(counter.counterFlags), value);
+        }
+        return value;
+    };
+    const float cpuUtilization = query("/perfmetrics_meta/device/cpu_utilization_average");
+    const float gpuUtilization = query("/perfmetrics_meta/device/gpu_utilization");
+    const float appCpuFrameTime = query("/perfmetrics_meta/app/cpu_frametime");
+    const float appGpuFrameTime = query("/perfmetrics_meta/app/gpu_frametime");
+    const float appVrLatency = query("/perfmetrics_meta/app/motion_to_photon_latency");
+    const float compTears = query("/perfmetrics_meta/compositor/dropped_frame_count");
+    const float compCpuFrameTime = query("/perfmetrics_meta/compositor/cpu_frametime");
+    const float compGpuFrameTime = query("/perfmetrics_meta/compositor/gpu_frametime");
 
     // Stall telemetry (cumulative since process start; see
     // common/stall_telemetry.h). Appended after the runtime perf metrics.
@@ -1917,14 +1952,15 @@ Java_org_citra_citra_1emu_vr_ui_VrRibbonLayer_nativeGetStatsOXR(JNIEnv* env, job
                           : -1.0f;
 
     const jfloat metricsArray[17] = {
-        cpuUtilization.floatValue,                 // Device CPU Utilization %
-        gpuUtilization.floatValue,                 // Device GPU Utilization %
-        appCpuFrameTime.floatValue,                // App CPU Frametime (ms)
-        appGpuFrameTime.floatValue,                // App GPU Frametime (ms)
-        appVrLatency.floatValue,                   // App VR Latency (ms)
-        compCpuFrameTime.floatValue,               // Compositor CPU Frametime (ms)
-        compGpuFrameTime.floatValue,               // Compositor GPU Frametime (ms)
-        static_cast<jfloat>(compTears.uintValue),  // Compositor tear count
+        // The runtime's metrics (NaN where it doesn't provide them).
+        cpuUtilization,                            // Device CPU Utilization %
+        gpuUtilization,                            // Device GPU Utilization %
+        appCpuFrameTime,                           // App CPU Frametime (ms)
+        appGpuFrameTime,                           // App GPU Frametime (ms)
+        appVrLatency,                              // App VR Latency (ms)
+        compCpuFrameTime,                          // Compositor CPU Frametime (ms)
+        compGpuFrameTime,                          // Compositor GPU Frametime (ms)
+        compTears,                                 // Compositor tear count
         static_cast<jfloat>(
             telemetry.emu_slow_frame_count.load(std::memory_order_relaxed)),  // Emu slow frames
         static_cast<jfloat>(

@@ -970,6 +970,9 @@
     <string name="vr_show_controller_diagram_description">Shows the controllers, labelled with the current mapping, to the left of the game, and the 3DS button layout to the right: turn your head to check which button does what.</string>
     <string name="vr_controller_diagram_title">Controller mapping</string>
     <string name="vr_3ds_layout_title">3DS button layout</string>
+    <string name="vr_controls_tab">Controls</string>
+    <string name="vr_controls_tab_controllers">VR controllers</string>
+    <string name="vr_controls_tab_3ds">3DS buttons</string>
     <string name="vr_show_pointer_ray">Show pointer ray</string>
     <string name="vr_show_pointer_ray_description">Draws a ray from the pointing controller to the cursor, to see where you point.</string>
     <string name="vr_setup_title">Welcome to CitraVR</string>
@@ -981,6 +984,8 @@
     <string name="vr_game_list_back_to_game">Back to game</string>
     <string name="vr_game_list_citra_window">CitraVR window</string>
     <string name="vr_game_list_quit">Quit</string>
+    <string name="vr_passthrough_on">Passthrough\nOn</string>
+    <string name="vr_passthrough_off">Passthrough\nOff</string>
     <string name="rom_server_title">ROM upload server</string>
     <string name="home_rom_server">ROM server</string>
     <string name="rom_server_screen_description">Add and delete ROMs in your games folder from a computer on the same network: turn the server on, then open its address in the computer\'s web browser. Drag ROMs onto the page to upload them; the game list updates when each upload finishes.</string>
@@ -1043,6 +1048,7 @@
     <string name="vr_stats_emulation_speed_label">Emulation Speed</string>
     <string name="vr_stats_cpu_util_label">CPU Usage</string>
     <string name="vr_stats_gpu_util_label">GPU Usage</string>
+    <string name="vr_stats_gpu_util_app_label">GPU Usage (CitraVR)</string>
     <string name="vr_stats_vr_app_label">VR App</string>
     <string name="vr_stats_gpu_frame_time_label">GPU Frame Time</string>
     <string name="vr_stats_cpu_frame_time_label">CPU Frame Time</string>

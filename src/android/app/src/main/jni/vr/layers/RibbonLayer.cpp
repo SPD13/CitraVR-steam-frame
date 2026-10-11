@@ -50,6 +50,16 @@ RibbonLayer::RibbonLayer(const XrPosef& pose, JNIEnv* jni, jobject activityObjec
     if (mIsMenuBackgroundSelectedMethodId == nullptr) {
         FAIL("Could not find isMenuBackgroundSelected()");
     }
+    mSetPassthroughStateMethodId =
+        jni->GetMethodID(GetVrUILayerClass(), "setPassthroughState", "(ZZ)V");
+    if (mSetPassthroughStateMethodId == nullptr) {
+        FAIL("Could not find setPassthroughState()");
+    }
+}
+
+void RibbonLayer::SetPassthroughState(const bool isOn, const bool isSupported) {
+    GetEnv()->CallVoidMethod(GetVrUILayerObject(), mSetPassthroughStateMethodId,
+                             static_cast<jboolean>(isOn), static_cast<jboolean>(isSupported));
 }
 
 bool RibbonLayer::IsMenuBackgroundSelected() const {

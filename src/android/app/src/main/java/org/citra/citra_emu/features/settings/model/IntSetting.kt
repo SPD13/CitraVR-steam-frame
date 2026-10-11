@@ -68,7 +68,7 @@ enum class IntSetting(
     VR_ENVIRONMENT(
         "vr_environment",
         Settings.SECTION_VR,
-        if (hMDType == VRUtils.HMDType.QUEST3.value) 1 else 2
+        if (hMDType == VRUtils.HMDType.QUEST3.value || IS_STEAM_FRAME) 1 else 2
     ),
     // CitraVR: Default to the highest CPU clock level
     // Keep in sync with the native default in jni/config.cpp.

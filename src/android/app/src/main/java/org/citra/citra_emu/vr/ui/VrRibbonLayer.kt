@@ -7,13 +7,17 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.Window
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.ToggleButton
 import org.citra.citra_emu.BuildConfig
 import org.citra.citra_emu.NativeLibrary
 import org.citra.citra_emu.R
+import org.citra.citra_emu.features.settings.utils.SettingsFile
+import org.citra.citra_emu.features.settings.model.IntSetting
 import org.citra.citra_emu.vr.VrActivity
+import org.citra.citra_emu.vr.utils.SystemLoadMonitor
 import org.citra.citra_emu.vr.utils.VrMessageQueue
 import org.citra.citra_emu.utils.Log
 
@@ -23,11 +27,16 @@ class VrRibbonLayer(activity: VrActivity) : VrUILayer(activity, R.layout.vr_ribb
     MAIN(R.id.main_panel, R.id.button_menu_main),
     POSITION(R.id.position_panel, R.id.button_menu_positional),
     STATS(R.id.stats_panel, R.id.button_menu_stats),
-    SETTINGS(R.id.settings_panel, R.id.button_menu_settings)
+    SETTINGS(R.id.settings_panel, R.id.button_menu_settings),
+    CONTROLS(R.id.controls_panel, R.id.button_menu_controls)
   }
 
   private var menuTypeCurrent: MenuType = MenuType.MAIN
   private var settingsMenu: VrSettingsMenu? = null
+
+  // Passthrough, as last reported by the VR session (see setPassthroughState()).
+  private var isPassthroughOn = false
+  private var isPassthroughSupported = true
 
     override fun onSurfaceCreated() {
       super.onSurfaceCreated()
@@ -35,6 +44,7 @@ class VrRibbonLayer(activity: VrActivity) : VrUILayer(activity, R.layout.vr_ribb
       initializeMainPanel()
       initializePositionalPanel()
       initializeStatsPanel()
+      initializeControlsPanel()
     }
 
   // The settings adapter opens dialogs in their own windows on the panel's
@@ -77,6 +87,8 @@ class VrRibbonLayer(activity: VrActivity) : VrUILayer(activity, R.layout.vr_ribb
       showSettingsMenu()
       VrMessageQueue.post(VrMessageQueue.MessageType.CHANGE_LOWER_MENU, 3)
     }
+    else if (menuTypeCurrent == MenuType.CONTROLS)
+      VrMessageQueue.post(VrMessageQueue.MessageType.CHANGE_LOWER_MENU, 4)
   }
 
   private fun showSettingsMenu() {
@@ -114,6 +126,7 @@ class VrRibbonLayer(activity: VrActivity) : VrUILayer(activity, R.layout.vr_ribb
                     R.id.button_menu_positional -> switchMenus(MenuType.POSITION)
                   R.id.button_menu_stats -> switchMenus(MenuType.STATS)
                   R.id.button_menu_settings -> switchMenus(MenuType.SETTINGS)
+                  R.id.button_menu_controls -> switchMenus(MenuType.CONTROLS)
                 }
             } else {
               // This button is not checked, revert to the default background
@@ -123,6 +136,31 @@ class VrRibbonLayer(activity: VrActivity) : VrUILayer(activity, R.layout.vr_ribb
       }
     // Set the first button as checked
     radioGroup?.check(R.id.button_menu_main)
+  }
+
+  // The Controls tab: a help page with the controller mapping (labelled like the
+  // diagram to the side of the game) and the 3DS button layout.
+  private fun initializeControlsPanel() {
+    val window = window ?: return
+    val labels = window.findViewById<FrameLayout>(R.id.controls_controller_labels)
+    val controllerPage = window.findViewById<View>(R.id.controls_controller_page)
+    val threeDsPage = window.findViewById<View>(R.id.controls_3ds_page)
+    val width = controllerPage.layoutParams.width.toFloat()
+    ControllerDiagram.observe { map -> ControllerDiagram.populate(labels, map, width) }
+    val tabs = window.findViewById<RadioGroup>(R.id.controls_tabs)
+    tabs.setOnCheckedChangeListener { group, checkedId ->
+      for (i in 0 until group.childCount) {
+        val button = group.getChildAt(i)
+        button.background = activity.getDrawable(
+          if (button.id == checkedId) R.drawable.vr_ribbon_button_pressed
+          else R.drawable.vr_ribbon_button_default
+        )
+      }
+      val showsController = checkedId == R.id.button_controls_controller
+      controllerPage.visibility = if (showsController) View.VISIBLE else View.GONE
+      threeDsPage.visibility = if (showsController) View.GONE else View.VISIBLE
+    }
+    tabs.check(R.id.button_controls_controller)
   }
 
   private fun initializePositionalPanel() {
@@ -139,6 +177,8 @@ class VrRibbonLayer(activity: VrActivity) : VrUILayer(activity, R.layout.vr_ribb
     horizontalLockToggle?.isChecked = true;
     VrMessageQueue.post(VrMessageQueue.MessageType.CHANGE_LOCK_HORIZONTAL_AXIS, if (horizontalLockToggle?.isChecked == true) 1 else 0)
 
+      // The background is held to move the panels (Position tab).
+      window?.findViewById<View>(R.id.frame)?.let { VrUILayer.holdWhilePressed(it) }
       window?.findViewById<View>(R.id.frame)?.setOnTouchListener { _, motionEvent ->
         /// set isMenuBackgroundSelected based on the motionEvent
         when (motionEvent.action) {
@@ -153,7 +193,41 @@ class VrRibbonLayer(activity: VrActivity) : VrUILayer(activity, R.layout.vr_ribb
       }
   }
 
+  /**
+   * Called from native code (VR thread) when passthrough turns on or off, and once
+   * at start. The button is hidden where the runtime has no passthrough.
+   */
+  fun setPassthroughState(isOn: Boolean, isSupported: Boolean) {
+    activity.runOnUiThread {
+      isPassthroughOn = isOn
+      isPassthroughSupported = isSupported
+      updatePassthroughButton()
+    }
+  }
+
+  private fun updatePassthroughButton() {
+    val button = window?.findViewById<Button>(R.id.buttonPassthrough) ?: return
+    button.visibility = if (isPassthroughSupported) View.VISIBLE else View.GONE
+    button.setText(if (isPassthroughOn) R.string.vr_passthrough_on else R.string.vr_passthrough_off)
+  }
+
+  // Shows the room around the game, or the void, and keeps the choice as the VR
+  // background setting for the next sessions.
+  private fun togglePassthrough() {
+    val turnOn = !isPassthroughOn
+    VrMessageQueue.post(VrMessageQueue.MessageType.SET_PASSTHROUGH, if (turnOn) 1 else 0)
+    IntSetting.VR_ENVIRONMENT.int = if (turnOn) VR_ENVIRONMENT_PASSTHROUGH else VR_ENVIRONMENT_VOID
+    SettingsFile.saveFile(SettingsFile.FILE_NAME_CONFIG, IntSetting.VR_ENVIRONMENT)
+  }
+
   private fun initializeMainPanel() {
+    window?.findViewById<Button>(R.id.buttonPassthrough)?.setOnClickListener {
+      togglePassthrough()
+    }
+    updatePassthroughButton()
+    // Select and Start press the 3DS buttons for as long as the trigger is held.
+    window?.findViewById<Button>(R.id.buttonSelect)?.let { VrUILayer.holdWhilePressed(it) }
+    window?.findViewById<Button>(R.id.buttonStart)?.let { VrUILayer.holdWhilePressed(it) }
     window?.findViewById<Button>(R.id.buttonSelect)?.setOnTouchListener { _, motionEvent ->
       val action: Int = when (motionEvent.action) {
         KeyEvent.ACTION_DOWN -> {
@@ -206,6 +280,7 @@ class VrRibbonLayer(activity: VrActivity) : VrUILayer(activity, R.layout.vr_ribb
   private lateinit var valueCpuUsage: TextView
   private lateinit var cpuProgressBar : ProgressBar
   private lateinit var valueGpuUsage: TextView
+  private lateinit var labelGpuUsage: TextView
   private lateinit var gpuProgressBar : ProgressBar
   private lateinit var valueAppCpu: TextView
   private lateinit var valueAppGpu: TextView
@@ -218,7 +293,10 @@ class VrRibbonLayer(activity: VrActivity) : VrUILayer(activity, R.layout.vr_ribb
   private var perfStatsUpdater: Runnable? = null
   private lateinit var perfStatsUpdateHandler : Handler
 
-  private external fun nativeGetStatsOXR(): FloatArray
+  private external fun nativeGetStatsOXR(): FloatArray?
+
+  // Measures CPU and GPU load where the runtime doesn't report it.
+  private val systemLoad = SystemLoadMonitor()
 
   private fun initializeStatsPanel() {
     perfStatsUpdateHandler =  Handler(activity.mainLooper)
@@ -233,6 +311,7 @@ class VrRibbonLayer(activity: VrActivity) : VrUILayer(activity, R.layout.vr_ribb
     valueCpuUsage = window?.findViewById(R.id.value_cpu_usage) ?: return
     cpuProgressBar = window?.findViewById(R.id.progress_cpu_usage) ?: return
     valueGpuUsage = window?.findViewById(R.id.value_gpu_usage) ?: return
+    labelGpuUsage = window?.findViewById(R.id.label_gpu_usage) ?: return
     gpuProgressBar = window?.findViewById(R.id.progress_gpu_usage) ?: return
     valueAppCpu = window?.findViewById(R.id.value_vr_app_cpu) ?: return
     valueAppGpu = window?.findViewById(R.id.value_vr_app_gpu) ?: return
@@ -258,6 +337,9 @@ class VrRibbonLayer(activity: VrActivity) : VrUILayer(activity, R.layout.vr_ribb
     val FRAMETIME_PEAK = 9
     val SLOW_FRAMES = 10
     val STALL_FRAMES = 11
+    // Starts the load measurement, so the first update has a value.
+    systemLoad.cpuPercent()
+    systemLoad.gpuPercent()
     perfStatsUpdater = Runnable {
       val msUnit = activity.getString(R.string.vr_stats_ms_unit)
       // Retrieve, print and display the Citra Emulator stats
@@ -296,7 +378,7 @@ class VrRibbonLayer(activity: VrActivity) : VrUILayer(activity, R.layout.vr_ribb
       }
 
       // Retrieve and display the VR stats
-      val statsOXR: FloatArray = nativeGetStatsOXR()
+      val statsOXR: FloatArray = nativeGetStatsOXR() ?: FloatArray(0)
       if (statsOXR.size > 0) {
         // Must match the array layout in nativeGetStatsOXR (vr_main.cpp).
         val DEVICE_CPU_USAGE = 0
@@ -316,30 +398,51 @@ class VrRibbonLayer(activity: VrActivity) : VrUILayer(activity, R.layout.vr_ribb
         val VR_MISSED_FRAMES = 14
         val VR_WORST_GAP_MS = 15
         val VR_WORST_WAIT_MS = 16
-        valueCpuUsage.text = String.format("%.0f%%", statsOXR[DEVICE_CPU_USAGE])
-        cpuProgressBar.progress = statsOXR[DEVICE_CPU_USAGE].toInt()
-        valueGpuUsage.text = String.format("%.0f%%", statsOXR[DEVICE_GPU_USAGE])
-        gpuProgressBar.progress = statsOXR[DEVICE_GPU_USAGE].toInt()
+        // The runtime's device usage where it reports it (Quest); otherwise
+        // (SteamVR reports none, or 0) the app's own measurement, where the
+        // GPU usage is CitraVR's only.
+        val measuredCpu = systemLoad.cpuPercent()
+        val measuredGpu = systemLoad.gpuPercent()
+        val runtimeCpu = statsOXR[DEVICE_CPU_USAGE]
+        val runtimeGpu = statsOXR[DEVICE_GPU_USAGE]
+        val cpuUsage = if (runtimeCpu > 0f) runtimeCpu else measuredCpu
+        val isGpuMeasured = !(runtimeGpu > 0f)
+        val gpuUsage = if (isGpuMeasured) measuredGpu else runtimeGpu
+        valueCpuUsage.text = percentText(cpuUsage)
+        cpuProgressBar.progress = if (cpuUsage.isNaN()) 0 else cpuUsage.toInt()
+        valueGpuUsage.text = percentText(gpuUsage)
+        gpuProgressBar.progress = if (gpuUsage.isNaN()) 0 else gpuUsage.toInt()
+        labelGpuUsage.setText(
+          if (isGpuMeasured) R.string.vr_stats_gpu_util_app_label else R.string.vr_stats_gpu_util_label
+        )
         val appCpuTime = statsOXR[APP_CPU_FRAMETIME_MS]
         val appGpuTime = statsOXR[APP_GPU_FRAMETIME_MS]
-        valueAppCpu.text = if (appCpuTime == 0.0f) {
+        valueAppCpu.text = if (appCpuTime.isNaN()) {
+          NOT_AVAILABLE
+        } else if (appCpuTime == 0.0f) {
           String.format("%.0fms", appCpuTime)
         } else if (appCpuTime > 0.01) {
           String.format("%.2fms", appCpuTime)
         } else {
           String.format("%.5fms", appCpuTime)
         }
-        valueAppGpu.text = if (appGpuTime == 0.0f) {
+        valueAppGpu.text = if (appGpuTime.isNaN()) {
+          NOT_AVAILABLE
+        } else if (appGpuTime == 0.0f) {
           String.format("%.0fms", appGpuTime)
         } else if (appGpuTime > 0.01) {
           String.format("%.2fms", appGpuTime)
         } else {
           String.format("%.5fms", appGpuTime)
         }
-        valueVrLatency.text = String.format("%.2f%s", statsOXR[APP_VR_LATENCY_MS], msUnit)
-        valueVrCompCpu.text = String.format("%.2f%s", statsOXR[APP_COMP_CPU_FRAMETIME_MS], msUnit)
-        valueVrCompGpu.text = String.format("%.2f%s", statsOXR[APP_COMP_GPU_FRAMETIME_MS], msUnit)
-        valueVrCompTears.text = String.format("%d", statsOXR[TEAR_COUNTER].toInt())
+        valueVrLatency.text = msText(statsOXR[APP_VR_LATENCY_MS], msUnit)
+        valueVrCompCpu.text = msText(statsOXR[APP_COMP_CPU_FRAMETIME_MS], msUnit)
+        valueVrCompGpu.text = msText(statsOXR[APP_COMP_GPU_FRAMETIME_MS], msUnit)
+        valueVrCompTears.text = if (statsOXR[TEAR_COUNTER].isNaN()) {
+          NOT_AVAILABLE
+        } else {
+          String.format("%d", statsOXR[TEAR_COUNTER].toInt())
+        }
 
         // Stall diagnostics (cumulative totals since app start)
         valueStallEmu.text = String.format(
@@ -362,7 +465,7 @@ class VrRibbonLayer(activity: VrActivity) : VrUILayer(activity, R.layout.vr_ribb
         Log.info(String.format(
           "VR Stats: cpu %.0f%% gpu %.0f%% | stalls: emuSlow %d emuStall %d emuWorst %.1fms | " +
           "shaderCompiles %d (%.0fms) | vrMissed %d vrWorstGap %.1fms vrWorstWait %.1fms",
-          statsOXR[DEVICE_CPU_USAGE], statsOXR[DEVICE_GPU_USAGE],
+          cpuUsage, gpuUsage,
           statsOXR[EMU_SLOW_FRAMES].toInt(), statsOXR[EMU_STALL_FRAMES].toInt(),
           statsOXR[EMU_WORST_FRAME_MS],
           statsOXR[SHADER_COMPILES].toInt(), statsOXR[SHADER_COMPILE_TOTAL_MS],
@@ -380,3 +483,16 @@ class VrRibbonLayer(activity: VrActivity) : VrUILayer(activity, R.layout.vr_ribb
     }
   }
 }
+
+// Shown for a statistic the runtime doesn't report.
+private const val NOT_AVAILABLE = "--"
+
+private fun percentText(percent: Float): String =
+  if (percent.isNaN()) NOT_AVAILABLE else String.format("%.0f%%", percent)
+
+private fun msText(ms: Float, msUnit: String): String =
+  if (ms.isNaN()) NOT_AVAILABLE else String.format("%.2f%s", ms, msUnit)
+
+// VR background setting values (VRSettings::VREnvironmentType in vr_settings.h).
+private const val VR_ENVIRONMENT_PASSTHROUGH = 1
+private const val VR_ENVIRONMENT_VOID = 2
