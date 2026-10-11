@@ -36,7 +36,7 @@
 
 Passthrough and the immersive modes haven't been checked on the headset yet. The same APK still targets Quest.
 
-**Quick start (Steam Frame):** build the APK (`cd src/android && ./gradlew assembleRelease`), then run `./register-frame.sh` from the repository root. It installs the app into the headset's Steam library with its artwork. The full process is in [Installing on Steam Frame](#installing-on-steam-frame).
+**Quick start (Steam Frame):** turn on Developer Mode on the headset (with a password), then from any computer run `ssh steamos@frame.local "curl -fsSL https://github.com/SPD13/CitraVR-steam-frame/releases/latest/download/install.sh | bash"`. It installs the latest release into the headset's Steam library with its artwork. Details in [Installing on Steam Frame](#installing-on-steam-frame).
 
 ### What this fork adds
 
@@ -89,7 +89,9 @@ Passthrough and the immersive modes haven't been checked on the headset yet. The
 - **Uploads** stream straight into the games folder, so any size works. The game list refreshes by itself. The settings show the address to open.
 
 **Steam library integration (Steam Frame)**
-- **`register-frame.sh`** registers the APK with the Frame's Steam client as a title on the Lepton runtime, as Valve's devkit Title Upload does. It names it **Citra VR - Steam Frame Edition**, shows the 2D game list window, and installs library artwork. `--uninstall` removes it.
+- **One-command install:** releases on GitHub come with `install.sh`, which runs on the headset (over ssh): it downloads the release, checks it, and registers the APK with the Frame's Steam client as a title on the Lepton runtime, as Valve's devkit Title Upload does. It names it **Citra VR - Steam Frame Edition**, shows the 2D game list window, and installs library artwork. The same command updates it; `--uninstall` removes it.
+- **`register-frame.sh`** does the same with an APK built from source, for development.
+- **Releases:** `tools/make-release.sh` builds, signs (with the project's release key), packages and publishes them.
 - **Library artwork:** capsule, wide capsule, hero banner, logo and icon, generated from the CitraVR logo by `steam-frame/make_library_art.py`.
 
 **Development**
@@ -147,77 +149,37 @@ Pulling the *other* controller's trigger while it points at the bottom screen or
 
 ## Installing on Steam Frame
 
-You build the app on a computer, then a script copies it to the headset over Wi-Fi and adds it to the Steam library. After that the computer is no longer needed: the app, your ROMs and your saves live on the headset.
+One command, run from any computer, installs the latest release on the headset: nothing to build. The app, your ROMs and your saves then live on the headset.
 
-### 1. What you need
+### 1. Prepare the headset
 
-**The headset**
-- A Valve **Steam Frame**, on the same network as your computer.
-- **Developer Mode** turned on, with a user password ([step 3](#3-prepare-the-headset)).
+1. **Turn on Developer Mode:** in the headset, open **Steam Settings → System**, turn on **Developer Mode**, and set a **user password** when asked. This allows ssh access as the user `steamos`.
+2. **Have a computer with ssh** on the same network: macOS, Linux and Windows 10/11 include it (on Windows, use PowerShell or Terminal).
+3. **Keep the headset awake** while installing: when it sleeps it drops off the network.
 
-**The computer: macOS, Linux, or Windows with Git Bash or WSL**
-
-| Tool | Why |
-| --- | --- |
-| Git | Fetch the source and its submodules |
-| JDK 17 | Android build (Temurin, Homebrew `openjdk@17`, or Android Studio's) |
-| Android SDK: platform 35, build-tools, CMake 3.25+, NDK `27.3.13750724` | Native and Android build (install with Android Studio's SDK Manager or `sdkmanager`) |
-| ssh / scp | Copy the app to the headset (built into macOS, Linux and Windows 10/11) |
-| About 10 GB of free disk space | Submodules, NDK and build output |
-
-### 2. Build the APK
+### 2. Install
 
 ```sh
-git clone --recurse-submodules -b steam-frame https://github.com/SPD13/CitraVR-steam-frame.git
-cd CitraVR-steam-frame/src/android
-export ANDROID_HOME=/path/to/android/sdk      # or put sdk.dir=... in local.properties
-./gradlew assembleRelease
+ssh steamos@frame.local "curl -fsSL https://github.com/SPD13/CitraVR-steam-frame/releases/latest/download/install.sh | bash"
 ```
 
-The first build compiles the whole emulator and takes around 10 minutes; later builds are much faster. The APK is written to `src/android/app/build/outputs/apk/release/app-release.apk`. The same APK runs on Quest.
+Enter the Developer Mode password when asked. If `frame.local` doesn't resolve, use the Frame's IP address from its Wi-Fi settings instead (`ssh steamos@192.168.1.42 "…"`).
 
-You can also download the APK built by GitHub Actions: open the repository's **Actions** tab, pick the latest run, and download the **CitraVR-…** artifact.
+The installer runs on the headset. It downloads the latest release, checks it against the release's `SHA256SUMS`, and:
 
-### 3. Prepare the headset
-
-1. **Turn on Developer Mode:** in the headset, open **Steam Settings → System**, turn on **Developer Mode**, and set a **user password** when asked. This enables ssh access as the user `steamos`.
-2. **Check that the computer can see the headset.** The Frame announces itself as `frame.local`:
-   ```sh
-   ping frame.local
-   ```
-   If the name doesn't resolve, find the Frame's IP address in its Wi-Fi settings, and put `FRAME_HOST=<ip>` in front of the commands below.
-3. **Copy your ssh key once,** so the installer doesn't ask for the password at every step:
-   ```sh
-   ssh-keygen -t ed25519            # only if you have no key yet
-   ssh-copy-id steamos@frame.local  # enter the Developer Mode password
-   ssh steamos@frame.local true     # should now return without asking anything
-   ```
-
-Keep the headset awake while installing: when it sleeps it drops off the network.
-
-### 4. Install into the Steam library
-
-From the repository root:
-
-```sh
-./register-frame.sh                          # installs the APK built in step 2
-./register-frame.sh path/to/CitraVR.apk      # or another APK
-FRAME_HOST=192.168.1.42 ./register-frame.sh  # if frame.local doesn't resolve
-```
-
-It prints one line per step:
+1. **Registers** the APK with Steam as a title on the **Lepton** (Android) runtime, the same request Valve's devkit Title Upload sends;
+2. installs the library **artwork**;
+3. **names** the entry **Citra VR - Steam Frame Edition**.
 
 ```text
+Downloading CitraVR (latest)...
 registered as Devkit Game: citravr (Android runtime, Lepton)
 Devkit Game: citravr: artwork installed for appid … in …/config/grid
 steam-library: app id … is now 'Citra VR - Steam Frame Edition', 4 artwork images set
+Done: 'Citra VR - Steam Frame Edition' is in your Steam library. …
 ```
 
-1. **Register:** the APK goes to `~/devkit-game/citravr/` on the headset and is registered with Steam as a title on the **Lepton** (Android) runtime, the same request Valve's devkit Title Upload sends.
-2. **Artwork:** the library artwork is installed.
-3. **Name:** the entry is renamed **Citra VR - Steam Frame Edition**.
-
-### 5. First launch
+### 3. First launch
 
 1. In the headset, open **Library → Non-Steam → Citra VR - Steam Frame Edition** and press **Play**. The first start takes a little longer while Lepton prepares the app. If Steam warns that Valve is still learning about the title's compatibility, continue.
 2. CitraVR's 2D window opens with a single question: **Do you want to manually configure Citra directories?** Answer **No, use default folders**. CitraVR creates its folders on the headset and opens the game list:
@@ -232,8 +194,23 @@ steam-library: app id … is now 'Citra VR - Steam Frame Edition', 4 artwork ima
 
 ### Updating and uninstalling
 
-- **Update:** after building a new APK, run `./register-frame.sh` again. It replaces the app and keeps its library entry, your folders, games and saves. CitraVR uses its folders as plain paths on the headset's storage. Lepton drops folder grants made with Android's picker on each update, but that doesn't affect plain paths. Folders you picked manually are switched to plain paths automatically when they're on the headset's storage.
-- **Uninstall:** `./register-frame.sh --uninstall` removes the library entry, its artwork and the files in `~/devkit-game/citravr/`.
+- **Update:** run the install command again. It replaces the app and keeps its library entry, your folders, games and saves. If CitraVR is running, quit it and start it again. CitraVR uses its folders as plain paths on the headset's storage, so updates don't lose them (Lepton drops folder grants made with Android's picker on each update; folders you picked manually are switched to plain paths automatically when they're on the headset's storage).
+- **A given version:** add `-s -- --version v1.0.0` after `bash` (releases are listed on the [Releases page](https://github.com/SPD13/CitraVR-steam-frame/releases)).
+- **Uninstall:** the same command with `bash -s -- --uninstall` removes the library entry, its artwork and the files in `~/devkit-game/citravr/`. Your data (folders, saves) stays on the headset.
+
+### Building from source
+
+For development. On macOS, Linux, or Windows with Git Bash or WSL, with Git, JDK 17, the Android SDK (platform 35, build-tools, CMake 3.25+, NDK `27.3.13750724`) and about 10 GB of free space:
+
+```sh
+git clone --recurse-submodules https://github.com/SPD13/CitraVR-steam-frame.git
+cd CitraVR-steam-frame/src/android
+export ANDROID_HOME=/path/to/android/sdk      # or put sdk.dir=... in local.properties
+./gradlew assembleRelease                     # ~10 minutes the first time
+cd ../.. && ./register-frame.sh               # installs it on frame.local (FRAME_HOST=<ip> otherwise)
+```
+
+`register-frame.sh` copies the APK and the files in `steam-frame/` to the headset and runs the same installer there; `./register-frame.sh --uninstall` removes it. To avoid typing the password at each step, copy your ssh key once: `ssh-copy-id steamos@frame.local`. The APK built this way is signed with your own development key: to switch between it and a release, uninstall first.
 
 ### Alternative: install with adb
 
@@ -243,14 +220,21 @@ For development, you can sideload the APK into **Lepton Development** instead: s
 
 | Problem | Fix |
 | --- | --- |
-| `ssh: Could not resolve hostname frame.local` | The headset is asleep or on another network. Wake it, or use `FRAME_HOST=<ip>`. |
-| `Permission denied (publickey,password)` | Developer Mode or its password isn't set, or the key wasn't copied. Redo [step 3](#3-prepare-the-headset). |
+| `ssh: Could not resolve hostname frame.local` | The headset is asleep or on another network. Wake it, or use its IP address. |
+| `Permission denied (publickey,password)` | Developer Mode or its password isn't set. Turn it on in **Steam Settings → System**. |
+| `could not download …` | The headset isn't online, or GitHub is unreachable. Check its Wi-Fi and run the command again. |
 | `Steam is not running on the Frame` | Put the headset on so Steam is running, then run the installer again. |
 | `Steam did not answer` / `Steam refused` | Developer Mode is off. Turn it on and run the installer again. |
-| The entry is called **Devkit Game: citravr** | The renaming step couldn't reach Steam. Run `./register-frame.sh` again. |
-| No artwork in the library | Run `./register-frame.sh` again, or restart the headset. |
+| The entry is called **Devkit Game: citravr** | The renaming step couldn't reach Steam. Run the installer again. |
+| No artwork in the library | Run the installer again, or restart the headset. |
 | The ROM upload page doesn't load | Check the server is on and the address matches the one on the **ROM server** screen. The computer must be on the same network. |
 | After Play, only the Steam interface shows | The SteamVR dashboard is in front: choose **Resume**, or close the dashboard. |
+
+### Releases (maintainers)
+
+`tools/make-release.sh vX.Y.Z` tags the commit, builds the APK signed with the project's **release key**, checks the signature, and packages the release files (the APK, `install.sh`, the `steam-frame/` files and `SHA256SUMS`) in `build/release/vX.Y.Z`; with `--publish` it pushes the tag and creates the GitHub release. The release key's certificate SHA-256 fingerprint is `08:AF:DA:F9:C8:B2:0E:4D:9F:01:CF:1A:D4:78:0D:2A:28:E2:DD:36:69:B6:29:EB:C6:E8:6A:F5:E8:C3:98:84`.
+
+Every release must be signed with this same key, or it won't install over the previous one. The key (`~/.config/citravr-steam-frame/release.keystore`, with its password in the macOS Keychain item `citravr-steam-frame-release-key`) is never committed: keep a backup of both outside this computer, as described in [STEAM_FRAME.md](STEAM_FRAME.md#release-key).
 
 ## Introduction
 I originally created this project to a be a proof-of-concept of some techniques XR developers were curious about. 

@@ -155,3 +155,19 @@ Report each of these, with the logcat for any that fail:
 - Curved screen and immersive modes fall back to the flat screen (no cylinder layers in SteamVR).
 - No CPU/GPU clock control and no performance stats overlay.
 - SteamVR allows 16 swapchains per session. CitraVR uses 6 (7 with passthrough).
+
+## Release key
+
+Releases are signed with the project's release key, so each release installs over the previous one. Android refuses an update signed with another key: if the key is lost, users have to uninstall CitraVR before installing a release signed with a new one (their folders and saves stay on the headset).
+
+- **Where it is:** `~/.config/citravr-steam-frame/release.keystore` (PKCS12, alias `citravr-steam-frame`, valid until 2054) on the maintainer's computer, readable only by its user; its password is in the macOS Keychain, item `citravr-steam-frame-release-key`. `tools/make-release.sh` reads both.
+- **Certificate SHA-256 fingerprint:** `08:AF:DA:F9:C8:B2:0E:4D:9F:01:CF:1A:D4:78:0D:2A:28:E2:DD:36:69:B6:29:EB:C6:E8:6A:F5:E8:C3:98:84`. It's public: `apksigner verify --print-certs` on a downloaded APK shows it.
+- **Never** commit the keystore or its password, or put them in an issue, a release, or an unencrypted cloud folder.
+
+**Backing it up:** keep the keystore file and its password together, in two places away from this computer.
+
+1. **A password manager** (1Password, Bitwarden, KeePassXC, …): create an item "CitraVR release key" with the password (`security find-generic-password -s citravr-steam-frame-release-key -w` prints it in your terminal) and the keystore file as an attachment.
+2. **An offline, encrypted copy**, for example on an encrypted USB drive, or a file encrypted with a passphrase you keep separately: `openssl enc -aes-256-cbc -pbkdf2 -in ~/.config/citravr-steam-frame/release.keystore -out citravr-release.keystore.enc` (decrypt with `-d`).
+
+To restore it on another computer, put the file back at the same path (`chmod 600` it) and add the password to the Keychain with `security add-generic-password -s citravr-steam-frame-release-key -a "$USER" -w`, or pass `CITRAVR_KEYSTORE` and `CITRAVR_KEYSTORE_PASS` to `tools/make-release.sh`. To check a restored key, `keytool -list -v -keystore … ` must show the fingerprint above.
+
