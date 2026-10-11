@@ -55,7 +55,12 @@ if [ -z "$apk" ] && ! $uninstall; then
   for asset in SHA256SUMS "$APK_ASSET" "$FILES_ASSET"; do
     curl -fsSL --retry 3 -o "$work/$asset" "$url/$asset" || die "could not download $url/$asset"
   done
-  (cd "$work" && sha256sum --check --quiet SHA256SUMS) || die "the download doesn't match SHA256SUMS"
+  # SHA256SUMS also lists install.sh, which isn't downloaded when it's piped to bash.
+  for asset in "$APK_ASSET" "$FILES_ASSET"; do
+    grep -q " $asset\$" "$work/SHA256SUMS" || die "$asset isn't in the release's SHA256SUMS"
+  done
+  (cd "$work" && sha256sum --check --quiet --ignore-missing SHA256SUMS) \
+    || die "the download doesn't match SHA256SUMS"
   apk="$work/$APK_ASSET"
   mkdir -p "$work/files"
   tar -xzf "$work/$FILES_ASSET" -C "$work/files"
