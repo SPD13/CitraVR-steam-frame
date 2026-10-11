@@ -21,17 +21,22 @@ Steam Frame runs Android apps through **Lepton**, Valve's Android container, wit
 
 ## Controls
 
-On Steam Frame controllers (if SteamVR accepts the Frame controller profile):
+On Steam Frame controllers (if SteamVR accepts the Frame controller profile), by default:
 
 | Steam Frame | 3DS |
 |---|---|
-| Right A, B, X, Y | A, B, X, Y |
+| Right A, B, X, Y | B, A, Y, X (the Nintendo layout) |
 | Left d-pad | D-pad |
-| Bumpers, and grips | L, R |
+| Bumpers | L, R |
+| Left, right stick click | Select, Start |
+| Grips | (unmapped) |
 | Left stick | Circle pad |
 | Right stick | C-stick |
-| Left View button | Toggle the lower menu (as Menu on Quest) |
-| Triggers | Pointer click |
+| Left View button | Home |
+| Right Menu button | Show/hide the menu bar |
+| Triggers | Pointer click (on a panel); ZL, ZR elsewhere |
+
+The buttons can be remapped in **Settings → VR → Controller mapping** (also in game, from the menu bar's **Settings** tab, globally or per game): tap a 3DS button, then press the controller button to use for it. Each 3DS button gets one controller button, A/B/X/Y, the d-pad, bumpers, grips, thumbstick clicks or triggers. The View and Menu buttons are mappable too, and showing/hiding the menu bar has its own row (on Menu by default; with no button for it, the menu bar stays shown). A trigger still clicks when its controller points at a panel (and that controller becomes the pointer); it presses its 3DS button only when pulled while pointing elsewhere. The sticks keep their roles.
 
 If the Frame profile is rejected, SteamVR maps the Frame controllers onto the Quest Touch bindings. In that case, Frame's three upper face buttons on each side act as Touch B/Y.
 
@@ -42,6 +47,7 @@ On Steam Frame, **Close Game** (in the menu bar under the game screens) doesn't 
 - **Pick a game** to start it. A game can't be started in a VR process that already ran one, so CitraVR ends the VR process and starts the new game in a fresh one. Expect about a second of the Steam interface in between.
 - **Back to game** closes the panel and resumes the current game.
 - **CitraVR window** ends the VR session and returns to CitraVR's 2D window, which is what Close Game did before.
+- **Quit** closes CitraVR altogether: the VR session, the 2D window and the ROM upload server (whose setting is kept, so it starts again with the app).
 
 The panel shows the game list as last scanned by CitraVR's 2D window. ROMs added while a game is running appear after the 2D window refreshes its list. On Quest, Close Game still returns to the 2D window, which the system brings back on its own.
 
