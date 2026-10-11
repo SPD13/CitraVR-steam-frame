@@ -110,11 +110,11 @@ Passthrough and the immersive modes haven't been checked on the headset yet. The
 
 ![CitraVR's default controls on the Steam Frame controllers](docs/images/steam-frame-controls.png)
 
-*Controller drawing: Valve, from the Steamworks documentation, relabelled with CitraVR's defaults (`steam-frame/make_controls_image.py`).*
+*Drawings made for CitraVR (`steam-frame/make_diagram_art.py`), labelled with its defaults by `steam-frame/make_controls_image.py`.*
 
-![A DS-style handheld with its buttons labelled: X at the top, A on the right, B at the bottom, Y on the left](docs/images/3ds-button-layout.png)
+![A New 3DS with its controls labelled: X at the top, A on the right, B at the bottom, Y on the left](docs/images/3ds-button-layout.png)
 
-*The 3DS-style button layout, for comparison: X at the top, A on the right, B at the bottom and Y on the left, as on a 3DS. In VR, this drawing is shown to the right of the game, opposite the controller diagram. (It's of the Anbernic RG DS, a DS-style handheld, from [omgmog's blog](https://blog.omgmog.net/), with its colours inverted, so its other labels, such as L2/R2 or the second joystick, don't match the 3DS.)*
+*The 3DS-style button layout, for comparison: X at the top, A on the right, B at the bottom and Y on the left, as on a 3DS. In VR, this drawing is shown to the right of the game, opposite the controller diagram, and in the menu bar's Controls tab.*
 
 | Steam Frame | 3DS / CitraVR |
 |---|---|
@@ -137,6 +137,8 @@ All of this can be changed in **Settings → VR → Controller mapping**, also i
 In VR, turn your head to the left: a panel shows the controllers labelled with the current mapping, and it follows any change you make (per game too). Turn your head to the right for the 3DS-style button layout. **Show controller diagram** in the VR settings hides both.
 
 ![The controller diagram panel in VR, labelled with the default mapping](docs/images/vr-controller-diagram.png)
+
+*The panel as the app lays it out with the default mapping (rendered by `steam-frame/make_panel_image.py`).*
 
 ### Pointing and clicking
 
@@ -302,3 +304,5 @@ Otherwise, follow the instructions for <a href="#discord">Discord</a> and post i
 
 ## License
 CitraVR is licensed under the GPLv3 (or any later version). Refer to the [LICENSE.txt](https://github.com/amwatson/CitraVR/blob/master/license.txt) file.
+
+Modified by SPD13 for Steam Frame, 2026. This fork is distributed under the same license.

@@ -1,18 +1,17 @@
-"""Relabels Valve's Steam Frame controller diagram with CitraVR's default mapping
+"""Labels CitraVR's Steam Frame controller drawing with the default mapping
 (docs/images/steam-frame-controls.png, shown in the README's Controls section).
 
-The source is Valve's diagram from the Steamworks documentation:
-https://shared.akamai.steamstatic.com/community_assets/images/steamworks_docs/english/steamframe-controllers_1.png
-Label boxes are pixel positions in that 2400x1224 image. Needs Pillow and the
-Avenir Next font (macOS).
+The source is the unlabelled drawing from make_diagram_art.py (frame-controllers.png,
+2400x1224); label boxes are pixel positions in it. Needs Pillow and the Avenir Next
+font (macOS).
 
-Usage: python make_controls_image.py <source.png> docs/images/steam-frame-controls.png
+Usage: python make_controls_image.py <frame-controllers.png> docs/images/steam-frame-controls.png
 
 With --blank <width>, writes the drawing without any labels, scaled to that
 width: the base of the in-VR controller diagram, whose labels the app draws
 from the current mapping (VrControllerDiagramLayer, which uses the same label
 boxes):
-python make_controls_image.py --blank 1600 <source.png> src/android/app/src/main/res/drawable-nodpi/vr_controller_diagram.png
+python make_controls_image.py --blank 1600 <frame-controllers.png> src/android/app/src/main/res/drawable-nodpi/vr_controller_diagram.png
 """
 import sys
 
@@ -36,22 +35,6 @@ ARROW_WIDTH = 30
 
 image = Image.open(SOURCE).convert("RGBA")
 draw = ImageDraw.Draw(image)
-
-
-def erase(box, margin=8):
-    x0, y0, x1, y1 = box
-    draw.rectangle((x0 - margin, y0 - margin, x1 + margin, y1 + margin), fill=(0, 0, 0, 255))
-
-
-def erase_line_keeping_outlines(x0, x1, y0, y1):
-    """Erases a horizontal line in the band, keeping the outlines that cross it:
-    each column is redrawn by blending what is just above and below the band."""
-    pixels = image.load()
-    for x in range(x0, x1 + 1):
-        above, below = pixels[x, y0 - 2], pixels[x, y1 + 2]
-        for y in range(y0 - 1, y1 + 2):
-            t = (y - (y0 - 2)) / ((y1 + 2) - (y0 - 2))
-            pixels[x, y] = tuple(round(a + (b - a) * t) for a, b in zip(above, below))
 
 
 def text_width(text, f):
@@ -78,8 +61,7 @@ def draw_text(x, y, text, f, fill):
 
 
 def label(box, lines, align="center", valign="center", f=font, fill=WHITE, line_height=LINE_HEIGHT):
-    """Replaces the label in `box` with `lines`, aligned like the original."""
-    erase(box)
+    """Writes `lines` in `box`, aligned towards the drawing's leader line."""
     if BLANK_WIDTH is not None:
         return
     x0, y0, x1, y1 = box
@@ -117,11 +99,6 @@ label((1471, 292, 1610, 348), ["Trigger:", "ZR or click"])
 # Left controller (seen from the front: the fourth drawing).
 label((1975, 222, 2074, 246), ["Bumper: L"], valign="bottom")
 label((2055, 292, 2194, 348), ["Trigger:", "ZL or click"])
-# "Capacitive finger tracking" isn't part of the mapping: remove it and its leader
-# lines, keeping the controller outlines they cross.
-erase((1728, 796, 1937, 852))
-for band in ((1548, 1760), (1908, 2120)):
-    erase_line_keeping_outlines(band[0], band[1], 804, 820)
 # The trigger rule, under the drawings of the triggers.
 label((1440, 1080, 2230, 1150),
       ["Triggers click when pointing at a panel (bottom screen, menus),",
