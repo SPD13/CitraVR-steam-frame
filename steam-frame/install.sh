@@ -25,6 +25,7 @@ say() { printf '%s\n' "$*"; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 version=latest
+release=  # the tag of the release installed, written to $DATA_DIR/VERSION (the installer app shows it)
 apk=
 files=
 uninstall=false
@@ -46,12 +47,18 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
 if [ -z "$apk" ] && ! $uninstall; then
+  release=$version
   if [ "$version" = latest ]; then
-    url="https://github.com/$REPO/releases/latest/download"
-  else
-    url="https://github.com/$REPO/releases/download/$version"
+    # GitHub redirects .../releases/latest to .../releases/tag/<tag>
+    release=$(curl -fsSIL --retry 3 -o /dev/null -w '%{url_effective}' "https://github.com/$REPO/releases/latest" \
+      | sed -n 's|.*/releases/tag/||p') || release=
   fi
-  say "Downloading CitraVR ($version)..."
+  if [ -n "$release" ]; then
+    url="https://github.com/$REPO/releases/download/$release"
+  else
+    url="https://github.com/$REPO/releases/latest/download"
+  fi
+  say "Downloading CitraVR (${release:-$version})..."
   for asset in SHA256SUMS "$APK_ASSET" "$FILES_ASSET"; do
     curl -fsSL --retry 3 -o "$work/$asset" "$url/$asset" || die "could not download $url/$asset"
   done
@@ -99,5 +106,12 @@ python3 "$DATA_DIR/install-library-art.py" "$GAMEID" "$DATA_DIR/library-art" \
 python3 "$DATA_DIR/steam-library.py" --gameid "$GAMEID" --name "$NAME" \
   --artwork-dir "$DATA_DIR/library-art" \
   || say "note: Steam's client did not answer; the title keeps the name 'Devkit Game: $GAMEID'"
+
+# The installed release; a local build (--apk) has none
+if [ -n "$release" ]; then
+  printf '%s\n' "$release" >"$DATA_DIR/VERSION"
+else
+  rm -f "$DATA_DIR/VERSION"
+fi
 
 say "Done: '$NAME' is in your Steam library. If CitraVR is running, quit it and start it again to update."

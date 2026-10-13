@@ -5,6 +5,9 @@
 #   tools/make-release.sh v1.0.0             build and package into build/release/v1.0.0
 #   tools/make-release.sh v1.0.0 --publish   same, then push the tag and create the release
 #
+# The release also gets the installer app for Windows, macOS and Linux (tools/make-installer.sh,
+# which needs Go and a Mac).
+#
 # Needs JAVA_HOME and ANDROID_HOME (as for any build), gh (for --publish), and the release key:
 # the keystore at ~/.config/citravr-steam-frame/release.keystore (or CITRAVR_KEYSTORE) and its
 # password in the macOS Keychain item "citravr-steam-frame-release-key" (or
@@ -58,17 +61,28 @@ cp steam-frame/install.sh steam-frame/frame-register.sh steam-frame/install-libr
 cp -r steam-frame/library-art "$out/files/"
 tar -czf "$out/citravr-steam-frame-files.tar.gz" -C "$out/files" .
 rm -rf "$out/files"
+installers=(CitraVR-Frame-Installer-Windows.exe CitraVR-Frame-Installer-macOS.zip
+  CitraVR-Frame-Installer-Linux-x86_64.tar.gz CitraVR-Frame-Installer-Linux-arm64.tar.gz)
+tools/make-installer.sh "$version"
+for f in "${installers[@]}"; do cp "build/installer/$f" "$out/$f"; done
 (cd "$out" && shasum -a 256 CitraVR-steam-frame.apk citravr-steam-frame-files.tar.gz install.sh \
-  install-windows.cmd >SHA256SUMS)
+  install-windows.cmd "${installers[@]}" >SHA256SUMS)
 
 cat >"$out/notes.md" <<EOF
 CitraVR - Steam Frame Edition $version.
 
-**Install or update on a Steam Frame** (Developer Mode on, with a password).
+**Install or update on a Steam Frame** (Developer Mode on, with a password): download the
+installer app for your computer below and open it. It finds the Frame on the network, checks it's
+ready, and installs or updates CitraVR.
 
-From Windows 10/11: download **install-windows.cmd** below and double-click it.
+| Computer | Download |
+| --- | --- |
+| Windows 10/11 | **CitraVR-Frame-Installer-Windows.exe** |
+| macOS 12 or later | **CitraVR-Frame-Installer-macOS.zip** |
+| Linux (PC, Steam Deck) | **CitraVR-Frame-Installer-Linux-x86_64.tar.gz** |
+| Linux (ARM64) | **CitraVR-Frame-Installer-Linux-arm64.tar.gz** |
 
-From macOS or Linux (or Windows PowerShell):
+Or from a terminal on any computer:
 
 \`\`\`
 ssh steamos@frame.local "curl -fsSL https://github.com/$REPO/releases/latest/download/install.sh | bash"
@@ -88,5 +102,5 @@ if $publish; then
   gh release create "$version" --repo "$REPO" --title "CitraVR - Steam Frame Edition $version" \
     --notes-file "$out/notes.md" "$out/CitraVR-steam-frame.apk" \
     "$out/citravr-steam-frame-files.tar.gz" "$out/install.sh" "$out/install-windows.cmd" \
-    "$out/SHA256SUMS"
+    "${installers[@]/#/$out/}" "$out/SHA256SUMS"
 fi
