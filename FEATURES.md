@@ -53,6 +53,7 @@ Everything the Steam Frame Edition changes or adds to [CitraVR](https://github.c
 
 ## Steam library integration (Steam Frame)
 - **One-command install:** releases on GitHub come with `install.sh`, which runs on the headset (over ssh): it downloads the release, checks it, and registers the APK with the Frame's Steam client as a title on the Lepton runtime, as Valve's devkit Title Upload does. It names it **Citra VR - Steam Frame Edition**, shows the 2D game list window, and installs library artwork. The same command updates it; `--uninstall` removes it.
+- **Windows installer:** `install-windows.cmd`, double-clicked on a Windows 10/11 PC, asks whether to install, update or uninstall and for the headset's address, checks the headset answers, and runs `install.sh` on it through Windows' ssh client (offering to add the client when it's missing). It runs `steam-frame/install-windows.ps1`, which can also be pasted into PowerShell.
 - **`register-frame.sh`** does the same with an APK built from source, for development.
 - **Releases:** `tools/make-release.sh` builds, signs (with the project's release key), packages and publishes them.
 - **Library artwork:** capsule, wide capsule, hero banner, logo and icon, generated from the CitraVR logo by `steam-frame/make_library_art.py`.

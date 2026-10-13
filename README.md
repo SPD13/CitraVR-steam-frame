@@ -41,7 +41,7 @@
 
 The APK targets Steam Frame only, not Quest.
 
-**Quick start (Steam Frame):** turn on Developer Mode on the headset (with a password), then from any computer run `ssh steamos@frame.local "curl -fsSL https://github.com/SPD13/CitraVR-steam-frame/releases/latest/download/install.sh | bash"`. It installs the latest release into the headset's Steam library with its artwork. Details in [Installing on Steam Frame](#installing-on-steam-frame).
+**Quick start (Steam Frame):** turn on Developer Mode on the headset (with a password). On Windows, download **[install-windows.cmd](https://github.com/SPD13/CitraVR-steam-frame/releases/latest/download/install-windows.cmd)** and double-click it. On macOS or Linux, run `ssh steamos@frame.local "curl -fsSL https://github.com/SPD13/CitraVR-steam-frame/releases/latest/download/install.sh | bash"`. It installs the latest release into the headset's Steam library with its artwork. Details in [Installing on Steam Frame](#installing-on-steam-frame).
 
 ### What this fork adds
 
@@ -110,16 +110,33 @@ One command, run from any computer, installs the latest release on the headset: 
 ### 1. Prepare the headset
 
 1. **Turn on Developer Mode:** in the headset, open **Steam Settings → System**, turn on **Developer Mode**, and set a **user password** when asked. This allows ssh access as the user `steamos`.
-2. **Have a computer with ssh** on the same network: macOS, Linux and Windows 10/11 include it (on Windows, use PowerShell or Terminal).
+2. **Have a computer on the same network:** Windows 10/11, macOS or Linux.
 3. **Keep the headset awake** while installing: when it sleeps it drops off the network.
 
 ### 2. Install
+
+**On Windows 10/11:** download **[install-windows.cmd](https://github.com/SPD13/CitraVR-steam-frame/releases/latest/download/install-windows.cmd)** and double-click it. Or, if you prefer, paste this in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/SPD13/CitraVR-steam-frame/master/steam-frame/install-windows.ps1 | iex
+```
+
+The installer asks a few questions in its window:
+1. **Install or update** (press Enter), or **Uninstall**;
+2. the **headset's address**: press Enter for `frame.local`. If it isn't found, enter the Frame's IP address from its Wi-Fi settings (for example `192.168.1.42`). The installer checks that the headset answers before going on;
+3. the **Developer Mode password** (it doesn't show as you type).
+
+If Windows' ssh client (OpenSSH Client) is missing, the installer offers to add it; Windows then asks for administrator rights. When you open the downloaded file, Windows may warn that it protected your PC: choose **More info → Run anyway**.
+
+**On macOS or Linux** (or from a Windows terminal), run:
 
 ```sh
 ssh steamos@frame.local "curl -fsSL https://github.com/SPD13/CitraVR-steam-frame/releases/latest/download/install.sh | bash"
 ```
 
 Enter the Developer Mode password when asked. If `frame.local` doesn't resolve, use the Frame's IP address from its Wi-Fi settings instead (`ssh steamos@192.168.1.42 "…"`).
+
+Either way, the same installer runs on the headset.
 
 The installer runs on the headset. It downloads the latest release, checks it against the release's `SHA256SUMS`, and:
 
@@ -150,9 +167,9 @@ Done: 'Citra VR - Steam Frame Edition' is in your Steam library. …
 
 ### Updating and uninstalling
 
-- **Update:** run the install command again. It replaces the app and keeps its library entry, your folders, games and saves. If CitraVR is running, quit it and start it again. CitraVR uses its folders as plain paths on the headset's storage, so updates don't lose them (Lepton drops folder grants made with Android's picker on each update; folders you picked manually are switched to plain paths automatically when they're on the headset's storage).
+- **Update:** run the install command again (on Windows, the installer, choosing **Install or update**). It replaces the app and keeps its library entry, your folders, games and saves. If CitraVR is running, quit it and start it again. CitraVR uses its folders as plain paths on the headset's storage, so updates don't lose them (Lepton drops folder grants made with Android's picker on each update; folders you picked manually are switched to plain paths automatically when they're on the headset's storage).
 - **A given version:** add `-s -- --version v1.0.0` after `bash` (releases are listed on the [Releases page](https://github.com/SPD13/CitraVR-steam-frame/releases)).
-- **Uninstall:** the same command with `bash -s -- --uninstall` removes the library entry, its artwork and the files in `~/devkit-game/citravr/`. Your data (folders, saves) stays on the headset.
+- **Uninstall:** the same command with `bash -s -- --uninstall` (on Windows, the installer, choosing **Uninstall**) removes the library entry, its artwork and the files in `~/devkit-game/citravr/`. Your data (folders, saves) stays on the headset.
 
 ### Building from source
 
@@ -176,7 +193,9 @@ For development, you can sideload the APK into **Lepton Development** instead: s
 
 | Problem | Fix |
 | --- | --- |
-| `ssh: Could not resolve hostname frame.local` | The headset is asleep or on another network. Wake it, or use its IP address. |
+| `ssh: Could not resolve hostname frame.local`, or (Windows installer) `frame.local wasn't found` / `no answer` | The headset is asleep or on another network. Wake it, or use its IP address. |
+| (Windows installer) `doesn't accept ssh logins` | Developer Mode is off. Turn it on in **Steam Settings → System**. |
+| (Windows installer) `no ssh client` | Add **OpenSSH Client** in **Settings → System → Optional features → Add a feature**, then run the installer again. |
 | `Permission denied (publickey,password)` | Developer Mode or its password isn't set. Turn it on in **Steam Settings → System**. |
 | `could not download …` | The headset isn't online, or GitHub is unreachable. Check its Wi-Fi and run the command again. |
 | `Steam is not running on the Frame` | Put the headset on so Steam is running, then run the installer again. |

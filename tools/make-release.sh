@@ -52,18 +52,23 @@ rm -rf "$out"
 mkdir -p "$out/files"
 cp "$apk" "$out/CitraVR-steam-frame.apk"
 cp steam-frame/install.sh "$out/install.sh"
+cp steam-frame/install-windows.cmd "$out/install-windows.cmd"
 cp steam-frame/install.sh steam-frame/frame-register.sh steam-frame/install-library-art.py \
   steam-frame/steam-library.py "$out/files/"
 cp -r steam-frame/library-art "$out/files/"
 tar -czf "$out/citravr-steam-frame-files.tar.gz" -C "$out/files" .
 rm -rf "$out/files"
 (cd "$out" && shasum -a 256 CitraVR-steam-frame.apk citravr-steam-frame-files.tar.gz install.sh \
-  >SHA256SUMS)
+  install-windows.cmd >SHA256SUMS)
 
 cat >"$out/notes.md" <<EOF
 CitraVR - Steam Frame Edition $version.
 
-**Install or update on a Steam Frame** (Developer Mode on, with a password), from any computer:
+**Install or update on a Steam Frame** (Developer Mode on, with a password).
+
+From Windows 10/11: download **install-windows.cmd** below and double-click it.
+
+From macOS or Linux (or Windows PowerShell):
 
 \`\`\`
 ssh steamos@frame.local "curl -fsSL https://github.com/$REPO/releases/latest/download/install.sh | bash"
@@ -82,5 +87,6 @@ if $publish; then
   git push origin "$version"
   gh release create "$version" --repo "$REPO" --title "CitraVR - Steam Frame Edition $version" \
     --notes-file "$out/notes.md" "$out/CitraVR-steam-frame.apk" \
-    "$out/citravr-steam-frame-files.tar.gz" "$out/install.sh" "$out/SHA256SUMS"
+    "$out/citravr-steam-frame-files.tar.gz" "$out/install.sh" "$out/install-windows.cmd" \
+    "$out/SHA256SUMS"
 fi
